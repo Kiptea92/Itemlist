@@ -1,4 +1,4 @@
-﻿// ToolkitUtils.Ideology
+﻿// ToolkitUtils.TMagic
 // Copyright (C) 2021  SirRandoo
 //
 // This program is free software: you can redistribute it and/or modify
@@ -14,21 +14,22 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using RimWorld;
+using System.Collections.Generic;
+using System.Linq;
+using JetBrains.Annotations;
 using SirRandoo.ToolkitUtils.Interfaces;
-using Verse;
+using SirRandoo.ToolkitUtils.Models;
 
-namespace SirRandoo.ToolkitUtils.Ideology;
+namespace SirRandoo.ToolkitUtils.TMagic.Models;
 
-public record BlindsightHealHandler : IHealHandler
+public enum AbilityType { Power, Effect, Versatility }
+
+public class Ability : PawnPower, ITieredPawnPower
 {
-    private readonly MemeDef _blindsightMemeDef = DefDatabase<MemeDef>.GetNamed("Blindsight");
+    public List<IPawnPower> Tiers { get; private init; } = new();
+    public override string? Name => Tiers?.FirstOrDefault()?.Name;
 
-    public bool CanHeal(BodyPartRecord bodyPart) => bodyPart.def != BodyPartDefOf.Eye || !Find.FactionManager.OfPlayer.ideos.HasAnyIdeoWithMeme(_blindsightMemeDef);
+    public override int MinimumLevel => Tiers?.FirstOrDefault()?.MinimumLevel ?? 0;
 
-    public bool CanHeal(Hediff hediff) => hediff.def != HediffDefOf.MissingBodyPart || hediff.Part.def != BodyPartDefOf.Eye
-        || !Find.FactionManager.OfPlayer.ideos.HasAnyIdeoWithMeme(_blindsightMemeDef);
-
-    /// <inheritdoc />
-    public string ModId { get; init; } = "Ludeon.Ideology";
+    public static Ability From(params IPawnPower[] powers) => new() { Tiers = new List<IPawnPower>(powers) };
 }

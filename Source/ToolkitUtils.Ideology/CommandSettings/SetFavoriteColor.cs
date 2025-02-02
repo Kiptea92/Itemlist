@@ -1,4 +1,4 @@
-﻿// ToolkitUtils.Ideology
+// ToolkitUtils.Ideology
 // Copyright (C) 2021  SirRandoo
 //
 // This program is free software: you can redistribute it and/or modify
@@ -14,21 +14,29 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using RimWorld;
 using SirRandoo.ToolkitUtils.Interfaces;
+using ToolkitUtils.UX;
+using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Ideology;
+namespace SirRandoo.ToolkitUtils.Ideology.CommandSettings;
 
-public record BlindsightHealHandler : IHealHandler
+public class SetFavoriteColor : ICommandSettings
 {
-    private readonly MemeDef _blindsightMemeDef = DefDatabase<MemeDef>.GetNamed("Blindsight");
+    public void Save()
+    {
+        TkUtils.Instance.WriteSettings();
+    }
 
-    public bool CanHeal(BodyPartRecord bodyPart) => bodyPart.def != BodyPartDefOf.Eye || !Find.FactionManager.OfPlayer.ideos.HasAnyIdeoWithMeme(_blindsightMemeDef);
+    public void Draw(Rect region)
+    {
+        var listing = new Listing_Standard();
 
-    public bool CanHeal(Hediff hediff) => hediff.def != HediffDefOf.MissingBodyPart || hediff.Part.def != BodyPartDefOf.Eye
-        || !Find.FactionManager.OfPlayer.ideos.HasAnyIdeoWithMeme(_blindsightMemeDef);
+        listing.Begin(region);
 
-    /// <inheritdoc />
-    public string ModId { get; init; } = "Ludeon.Ideology";
+        listing.CheckboxLabeled("TKUtils.AlphaFavoriteColor.Label".TranslateSimple(), ref TkSettings.TransparentColors);
+        listing.DrawDescription("TKUtils.AlphaFavoriteColor.Description".TranslateSimple());
+
+        listing.End();
+    }
 }

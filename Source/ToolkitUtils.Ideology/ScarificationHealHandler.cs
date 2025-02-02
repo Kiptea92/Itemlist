@@ -1,5 +1,5 @@
-﻿// ToolkitUtils.Ideology
-// Copyright (C) 2021  SirRandoo
+﻿// ToolkitUtils
+// Copyright (C) 2022  SirRandoo
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published
@@ -14,20 +14,44 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+using JetBrains.Annotations;
 using RimWorld;
 using SirRandoo.ToolkitUtils.Interfaces;
 using Verse;
+using PreceptDefOf = SirRandoo.ToolkitUtils.Ideology.Defs.PreceptDefOf;
 
 namespace SirRandoo.ToolkitUtils.Ideology;
 
-public record BlindsightHealHandler : IHealHandler
+[UsedImplicitly]
+public record ScarificationHealHandler : IHealHandler
 {
-    private readonly MemeDef _blindsightMemeDef = DefDatabase<MemeDef>.GetNamed("Blindsight");
+    /// <inheritdoc/>
+    public bool CanHeal(Hediff hediff)
+    {
+        bool isScarification = hediff.def == HediffDefOf.Scarification;
 
-    public bool CanHeal(BodyPartRecord bodyPart) => bodyPart.def != BodyPartDefOf.Eye || !Find.FactionManager.OfPlayer.ideos.HasAnyIdeoWithMeme(_blindsightMemeDef);
+        Ideo ideo = hediff.pawn.Ideo;
 
-    public bool CanHeal(Hediff hediff) => hediff.def != HediffDefOf.MissingBodyPart || hediff.Part.def != BodyPartDefOf.Eye
-        || !Find.FactionManager.OfPlayer.ideos.HasAnyIdeoWithMeme(_blindsightMemeDef);
+        if (ideo.HasPrecept(PreceptDefOf.Scarification_Minor))
+        {
+            return !isScarification;
+        }
+
+        if (ideo.HasPrecept(PreceptDefOf.Scarification_Heavy))
+        {
+            return !isScarification;
+        }
+
+        if (ideo.HasPrecept(PreceptDefOf.Scarification_Extreme))
+        {
+            return !isScarification;
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc/>
+    public bool CanHeal(BodyPartRecord bodyPart) => true;
 
     /// <inheritdoc />
     public string ModId { get; init; } = "Ludeon.Ideology";
