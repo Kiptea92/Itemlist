@@ -14,25 +14,24 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using System.Runtime.Serialization;
 using JetBrains.Annotations;
+using Newtonsoft.Json;
 using SirRandoo.ToolkitUtils.Interfaces;
 using TwitchToolkit;
 
-namespace SirRandoo.ToolkitUtils.Models
-{
-    [UsedImplicitly(ImplicitUseTargetFlags.WithMembers)]
-    public class PawnKindData : IShopDataBase
-    {
-        [DataMember(Name = "customName")] public bool CustomName;
-        [DataMember(Name = "stats")] public string[] Stats { get; set; } = { };
-        [DataMember(Name = "mod")] public string Mod { get; set; }
-        [DataMember(Name = "karmaType")] public KarmaType? KarmaType { get; set; }
+namespace SirRandoo.ToolkitUtils.Models;
 
-        public void Reset()
-        {
-            CustomName = false;
-            KarmaType = null;
-        }
+[UsedImplicitly(ImplicitUseTargetFlags.WithMembers)]
+public class PawnKindData : IShopDataBase
+{
+    [JsonProperty("customName")] public bool CustomName;
+    [JsonProperty("stats")] public string[] Stats { get; set; } = { };
+    [JsonProperty("mod")] public string Mod { get; set; }
+    [JsonProperty("karmaType")] public KarmaType? KarmaType { get; set; }
+
+    public void Reset()
+    {
+        CustomName = false;
+        KarmaType = null;
     }
 }

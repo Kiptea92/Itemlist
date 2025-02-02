@@ -14,23 +14,37 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using System.Runtime.Serialization;
+using Newtonsoft.Json;
 using SirRandoo.ToolkitUtils.Interfaces;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models;
+
+public abstract class ProxyPartial : IShopItemBase
 {
-    public abstract class ProxyPartial : IShopItemBase
+    [JsonProperty("defName")] public string? DefName { get; set; }
+    [JsonProperty("enabled")] public bool Enabled { get; set; }
+    [JsonProperty("name")] public string? Name { get; set; }
+    [JsonProperty("price")] public int Cost { get; set; }
+    [JsonIgnore] public IShopDataBase Data { get; set; }
+
+    public void ResetName()
     {
-        [DataMember(Name = "defName")] public string DefName { get; set; }
-        [DataMember(Name = "enabled")] public bool Enabled { get; set; }
-        [DataMember(Name = "name")] public string Name { get; set; }
-        [DataMember(Name = "price")] public int Cost { get; set; }
-        [IgnoreDataMember] public IShopDataBase Data { get; set; }
+        // Partials can't be reset.
+        // This method exists solely because of the interface it implements.
+        // You should not call this on proxies.
+    }
 
-        public void ResetName() { }
+    public void ResetPrice()
+    {
+        // Partials can't be reset.
+        // This method exists solely because of the interface it implements.
+        // You should not call this on proxies.
+    }
 
-        public void ResetPrice() { }
-
-        public void ResetData() { }
+    public void ResetData()
+    {
+        // Partials can't be reset.
+        // This method exists solely because of the interface it implements.
+        // You should not call this on proxies.
     }
 }

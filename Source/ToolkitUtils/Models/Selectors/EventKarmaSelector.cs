@@ -1,67 +1,64 @@
-﻿// MIT License
-// 
-// Copyright (c) 2021 SirRandoo
-// 
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+﻿// ToolkitUtils
+// Copyright (C) 2021  SirRandoo
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using SirRandoo.ToolkitUtils.Models.Tables;
 using SirRandoo.ToolkitUtils.Utils;
+using ToolkitUtils.UX;
 using TwitchToolkit;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models.Selectors;
+
+public class EventKarmaSelector : ISelectorBase<EventItem>
 {
-    public class EventKarmaSelector : ISelectorBase<EventItem>
+    private string? _karmaLabel;
+    private KarmaType _karmaType = KarmaType.Neutral;
+    private List<FloatMenuOption> _karmaTypes;
+
+    public ObservableProperty<bool> Dirty { get; set; }
+
+    public void Prepare()
     {
-        private string karmaLabel;
-        private KarmaType karmaType = KarmaType.Neutral;
+        _karmaLabel = Label;
+        _karmaTypes = Data.KarmaTypes.Values.Select(i => new FloatMenuOption(i.ToString(), () => SetKarma(i))).ToList();
+    }
 
-        public ObservableProperty<bool> Dirty { get; set; }
+    public void Draw(Rect canvas)
+    {
+        (Rect label, Rect field) = canvas.Split(0.75f);
+        LabelDrawer.Draw(label, _karmaLabel);
 
-        public void Prepare()
+        if (Widgets.ButtonText(field, _karmaType.ToString()))
         {
-            karmaLabel = "TKUtils.Fields.KarmaType".Localize();
+            Find.WindowStack.Add(new FloatMenu(_karmaTypes));
         }
+    }
 
-        public void Draw(Rect canvas)
-        {
-            (Rect label, Rect field) = canvas.ToForm(0.75f);
-            SettingsHelper.DrawLabel(label, karmaLabel);
+    public bool IsVisible(TableSettingsItem<EventItem> item) => item.Data.KarmaType == _karmaType;
 
-            if (Widgets.ButtonText(field, karmaType.ToString()))
-            {
-                Find.WindowStack.Add(
-                    new FloatMenu(
-                        Data.KarmaTypes.Select(i => new FloatMenuOption(i.ToString(), () => karmaType = i)).ToList()
-                    )
-                );
-            }
-        }
+    public string? Label => "TKUtils.Fields.KarmaType".TranslateSimple();
 
-        public bool IsVisible([NotNull] TableSettingsItem<EventItem> item)
-        {
-            return item.Data.KarmaType == karmaType;
-        }
+    private void SetKarma(KarmaType karma)
+    {
+        _karmaType = karma;
+        Dirty.Set(true);
     }
 }

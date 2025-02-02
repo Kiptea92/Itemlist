@@ -16,16 +16,15 @@
 
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.Serialization;
 using JetBrains.Annotations;
+using Newtonsoft.Json;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models;
+
+[UsedImplicitly]
+[SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
+public class ShopLegacy
 {
-    [UsedImplicitly]
-    [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
-    public class ShopLegacy
-    {
-        [DataMember(Name = "traits")] public List<TraitItem> Traits { get; set; }
-        [DataMember(Name = "races")] public List<PawnKindItem> Races { get; set; }
-    }
+    [JsonProperty("traits")] public List<TraitItem> Traits { get; set; }
+    [JsonProperty("races")] public List<PawnKindItem> Races { get; set; }
 }

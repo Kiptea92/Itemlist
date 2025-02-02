@@ -14,31 +14,33 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using SirRandoo.ToolkitUtils.Models.Tables;
+using ToolkitUtils.UX;
 using UnityEngine;
+using Verse;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models.Mutators;
+
+public class ResetDataMutator<T> : IMutatorBase<T> where T : class, IShopItemBase
 {
-    public class ResetDataMutator<T> : IMutatorBase<T> where T : class, IShopItemBase
+    private string _resetDataText;
+    public int Priority => 10;
+
+    public string Label => "TKUtils.EditorMutator.ResetData".TranslateSimple();
+
+    public void Prepare()
     {
-        private string resetDataText;
-        public int Priority => 10;
+        _resetDataText = Label;
+    }
 
-        public void Prepare()
-        {
-            resetDataText = "TKUtils.EditorMutator.ResetData".Localize();
-        }
+    public void Draw(Rect canvas)
+    {
+        LabelDrawer.Draw(canvas, _resetDataText, new Color(1f, 0.53f, 0.76f));
+    }
 
-        public void Draw(Rect canvas)
-        {
-            SettingsHelper.DrawColoredLabel(canvas, resetDataText, new Color(1f, 0.53f, 0.76f));
-        }
-
-        public void Mutate([NotNull] TableSettingsItem<T> item)
-        {
-            item.Data.ResetData();
-        }
+    public void Mutate(TableSettingsItem<T> item)
+    {
+        item.Data.ResetData();
     }
 }

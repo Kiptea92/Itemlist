@@ -14,36 +14,35 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using SirRandoo.ToolkitUtils.Models.Tables;
 using SirRandoo.ToolkitUtils.Utils;
+using ToolkitUtils.UX;
 using UnityEngine;
+using Verse;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models.Selectors;
+
+public class EquippableSelector : ISelectorBase<ThingItem>
 {
-    public class EquippableSelector : ISelectorBase<ThingItem>
+    private string? _equippableText;
+    private bool _state = true;
+    public ObservableProperty<bool> Dirty { get; set; }
+
+    public void Prepare()
     {
-        private string equippableText;
-        private bool state = true;
-        public ObservableProperty<bool> Dirty { get; set; }
+        _equippableText = Label;
+    }
 
-        public void Prepare()
+    public void Draw(Rect canvas)
+    {
+        if (CheckboxDrawer.DrawCheckbox(canvas, _equippableText, ref _state))
         {
-            equippableText = "TKUtils.Fields.CanEquip".Localize();
-        }
-
-        public void Draw(Rect canvas)
-        {
-            if (SettingsHelper.LabeledPaintableCheckbox(canvas, equippableText, ref state))
-            {
-                Dirty.Set(true);
-            }
-        }
-
-        public bool IsVisible([NotNull] TableSettingsItem<ThingItem> item)
-        {
-            return item.Data.Thing.IsWeapon == state;
+            Dirty.Set(true);
         }
     }
+
+    public bool IsVisible(TableSettingsItem<ThingItem> item) => item.Data.Thing.IsWeapon == _state;
+
+    public string? Label => "TKUtils.Fields.CanEquip".TranslateSimple();
 }

@@ -1,79 +1,77 @@
 ﻿// ToolkitUtils
 // Copyright (C) 2021  SirRandoo
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using System;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using SirRandoo.ToolkitUtils.Models.Tables;
 using SirRandoo.ToolkitUtils.Utils;
+using ToolkitUtils.UX;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models.Selectors;
+
+public class DefNameSelector<T> : ISelectorBase<T> where T : class, IShopItemBase
 {
-    public class DefNameSelector<T> : ISelectorBase<T> where T : class, IShopItemBase
+    private string _defName = "";
+    private string? _defNameText;
+    private bool _exclude = true;
+    private string _excludeTooltip;
+    private string _includeTooltip;
+
+    public void Prepare()
     {
-        private string defName = "";
-        private string defNameText;
-        private bool exclude = true;
-        private string excludeTooltip;
-        private string includeTooltip;
+        _defNameText = Label;
+        _excludeTooltip = "TKUtils.SelectorTooltips.ExcludeItem".TranslateSimple();
+        _includeTooltip = "TKUtils.SelectorTooltips.IncludeItem".TranslateSimple();
+    }
 
-        public void Prepare()
+    public void Draw(Rect canvas)
+    {
+        (Rect label, Rect field) = canvas.Split(0.75f);
+        LabelDrawer.Draw(label, _defNameText);
+
+        if (FieldDrawer.DrawTextField(field, _defName, out string input))
         {
-            defNameText = "TKUtils.Fields.DefName".Localize();
-            excludeTooltip = "TKUtils.SelectorTooltips.ExcludeItem".Localize();
-            includeTooltip = "TKUtils.SelectorTooltips.IncludeItem".Localize();
-        }
-
-        public void Draw(Rect canvas)
-        {
-            (Rect label, Rect field) = canvas.ToForm(0.75f);
-            SettingsHelper.DrawLabel(label, defNameText);
-
-            if (SettingsHelper.DrawTextField(field, defName, out string input))
-            {
-                defName = input;
-                Dirty.Set(true);
-            }
-
-            if (!SettingsHelper.DrawFieldButton(
-                field,
-                exclude ? ResponseHelper.NotEqualGlyph : "=",
-                exclude ? includeTooltip : excludeTooltip
-            ))
-            {
-                return;
-            }
-
-            exclude = !exclude;
+            _defName = input;
             Dirty.Set(true);
         }
 
-        public ObservableProperty<bool> Dirty { get; set; }
-
-        public bool IsVisible(TableSettingsItem<T> item)
+        if (!ButtonDrawer.DrawFieldButton(field, _exclude ? "!=" : "=", _exclude ? _includeTooltip : _excludeTooltip))
         {
-            if (defName.NullOrEmpty())
-            {
-                return false;
-            }
-
-            bool shouldShow = item.Data.DefName.Equals(defName);
-
-            return exclude ? !shouldShow : shouldShow;
+            return;
         }
+
+        _exclude = !_exclude;
+        Dirty.Set(true);
     }
+
+    public ObservableProperty<bool> Dirty { get; set; }
+
+    public bool IsVisible(TableSettingsItem<T> item)
+    {
+        if (_defName.NullOrEmpty())
+        {
+            return false;
+        }
+
+        bool shouldShow = item.Data.DefName.Equals(_defName);
+
+        return _exclude ? !shouldShow : shouldShow;
+    }
+
+    public string? Label => "TKUtils.Fields.DefName".TranslateSimple();
 }

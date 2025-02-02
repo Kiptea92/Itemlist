@@ -14,36 +14,35 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using SirRandoo.ToolkitUtils.Models.Tables;
 using SirRandoo.ToolkitUtils.Utils;
+using ToolkitUtils.UX;
 using UnityEngine;
+using Verse;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models.Selectors;
+
+public class UsabilitySelector : ISelectorBase<ThingItem>
 {
-    public class UsabilitySelector : ISelectorBase<ThingItem>
+    private bool _state = true;
+    private string? _usableText;
+    public ObservableProperty<bool> Dirty { get; set; }
+
+    public void Prepare()
     {
-        private bool state = true;
-        private string usableText;
-        public ObservableProperty<bool> Dirty { get; set; }
+        _usableText = Label;
+    }
 
-        public void Prepare()
+    public void Draw(Rect canvas)
+    {
+        if (CheckboxDrawer.DrawCheckbox(canvas, _usableText, ref _state))
         {
-            usableText = "TKUtils.Fields.CanUse".Localize();
-        }
-
-        public void Draw(Rect canvas)
-        {
-            if (SettingsHelper.LabeledPaintableCheckbox(canvas, usableText, ref state))
-            {
-                Dirty.Set(true);
-            }
-        }
-
-        public bool IsVisible([NotNull] TableSettingsItem<ThingItem> item)
-        {
-            return item.Data.IsUsable;
+            Dirty.Set(true);
         }
     }
+
+    public bool IsVisible(TableSettingsItem<ThingItem> item) => item.Data.IsUsable;
+
+    public string? Label => "TKUtils.Fields.CanUse".TranslateSimple();
 }

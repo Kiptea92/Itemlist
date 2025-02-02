@@ -1,51 +1,56 @@
 ﻿// ToolkitUtils
 // Copyright (C) 2021  SirRandoo
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using SirRandoo.ToolkitUtils.Models.Tables;
+using ToolkitUtils.UX;
 using UnityEngine;
+using Verse;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models.Mutators;
+
+public class StuffMutator : IMutatorBase<ThingItem>
 {
-    public class StuffMutator : IMutatorBase<ThingItem>
+    private bool _state;
+    private string _stuffText;
+
+    public int Priority => 1;
+
+    public string Label => "TKUtils.Fields.CanBeStuff".TranslateSimple();
+
+    public void Prepare()
     {
-        private bool state;
-        private string stuffText;
+        _stuffText = Label;
+    }
 
-        public int Priority => 1;
-
-        public void Prepare()
+    public void Mutate(TableSettingsItem<ThingItem> item)
+    {
+        if (item.Data.Thing?.IsStuff != true)
         {
-            stuffText = "TKUtils.Fields.CanBeStuff".Localize();
+            return;
         }
 
-        public void Mutate([NotNull] TableSettingsItem<ThingItem> item)
+        if (item.Data.ItemData != null)
         {
-            if (!item.Data.Thing?.IsStuff ?? true)
-            {
-                return;
-            }
-
-            item.Data.ItemData.IsStuffAllowed = state;
+            item.Data.ItemData.IsStuffAllowed = _state;
         }
+    }
 
-        public void Draw(Rect canvas)
-        {
-            SettingsHelper.LabeledPaintableCheckbox(canvas, stuffText, ref state);
-        }
+    public void Draw(Rect canvas)
+    {
+        CheckboxDrawer.DrawCheckbox(canvas, _stuffText, ref _state);
     }
 }

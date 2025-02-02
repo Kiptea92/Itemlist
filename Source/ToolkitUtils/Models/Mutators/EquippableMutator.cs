@@ -14,37 +14,39 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using SirRandoo.ToolkitUtils.Models.Tables;
+using ToolkitUtils.UX;
 using UnityEngine;
+using Verse;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models.Mutators;
+
+public class EquippableMutator : IMutatorBase<ThingItem>
 {
-    public class EquippableMutator : IMutatorBase<ThingItem>
+    private bool _state = true;
+    private string _usableText;
+    public int Priority => 1;
+
+    public string Label => "TKUtils.Fields.CanEquip".TranslateSimple();
+
+    public void Prepare()
     {
-        private bool state = true;
-        private string usableText;
-        public int Priority => 1;
+        _usableText = Label;
+    }
 
-        public void Prepare()
+    public void Draw(Rect canvas)
+    {
+        CheckboxDrawer.DrawCheckbox(canvas, _usableText, ref _state);
+    }
+
+    public void Mutate(TableSettingsItem<ThingItem> item)
+    {
+        if (item.Data.ItemData == null)
         {
-            usableText = "TKUtils.Fields.CanEquip".Localize();
+            return;
         }
 
-        public void Draw(Rect canvas)
-        {
-            SettingsHelper.LabeledPaintableCheckbox(canvas, usableText, ref state);
-        }
-
-        public void Mutate([NotNull] TableSettingsItem<ThingItem> item)
-        {
-            if (item.Data.ItemData == null)
-            {
-                return;
-            }
-
-            item.Data.ItemData!.IsEquippable = state;
-        }
+        item.Data.ItemData!.IsEquippable = _state;
     }
 }

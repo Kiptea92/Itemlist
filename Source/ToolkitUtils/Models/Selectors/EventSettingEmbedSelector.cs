@@ -1,56 +1,49 @@
-﻿// MIT License
-// 
-// Copyright (c) 2021 SirRandoo
-// 
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+﻿// ToolkitUtils
+// Copyright (C) 2021  SirRandoo
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using SirRandoo.ToolkitUtils.Models.Tables;
 using SirRandoo.ToolkitUtils.Utils;
+using ToolkitUtils.UX;
 using UnityEngine;
+using Verse;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models.Selectors;
+
+public class EventSettingEmbedSelector : ISelectorBase<EventItem>
 {
-    public class EventSettingEmbedSelector : ISelectorBase<EventItem>
+    private string? _label;
+    private bool _state = true;
+
+    public ObservableProperty<bool> Dirty { get; set; }
+
+    public void Prepare()
     {
-        private string label;
-        private bool state = true;
+        _label = Label;
+    }
 
-        public ObservableProperty<bool> Dirty { get; set; }
-
-        public void Prepare()
+    public void Draw(Rect canvas)
+    {
+        if (CheckboxDrawer.DrawCheckbox(canvas, _label, ref _state))
         {
-            label = "TKUtils.Fields.SettingEmbed".Localize();
-        }
-
-        public void Draw(Rect canvas)
-        {
-            if (SettingsHelper.LabeledPaintableCheckbox(canvas, label, ref state))
-            {
-                Dirty.Set(true);
-            }
-        }
-
-        public bool IsVisible([NotNull] TableSettingsItem<EventItem> item)
-        {
-            return item.Data.HasSettingsEmbed == state;
+            Dirty.Set(true);
         }
     }
+
+    public bool IsVisible(TableSettingsItem<EventItem> item) => item.Data.HasSettingsEmbed == _state;
+
+    public string? Label => "TKUtils.Fields.SettingEmbed".TranslateSimple();
 }
