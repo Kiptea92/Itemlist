@@ -15,42 +15,65 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using System;
-using SirRandoo.ToolkitUtils.Helpers;
+using System.Linq;
 using SirRandoo.ToolkitUtils.Interfaces;
+using ToolkitUtils.UX;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.CommandSettings
+namespace SirRandoo.ToolkitUtils.CommandSettings;
+
+public class PawnLeave : ICommandSettings
 {
-    public class PawnLeave : ICommandSettings
+    private readonly FloatMenu _leaveMethods;
+    private string _currentLeaveMethodText;
+
+    public PawnLeave()
     {
-        public void Draw(Rect region)
+        _leaveMethods = new FloatMenu(
+            Enum.GetNames(typeof(LeaveMethod))
+               .Select(
+                    n => new FloatMenuOption(
+                        $"TKUtils.Abandon.Method.{n}".TranslateSimple(),
+                        () =>
+                        {
+                            TkSettings.LeaveMethod = n;
+                            _currentLeaveMethodText = $"TKUtils.Abandon.Method.{TkSettings.LeaveMethod}".TranslateSimple();
+                        }
+                    )
+                )
+               .ToList()
+        );
+
+        _currentLeaveMethodText = $"TKUtils.Abandon.Method.{TkSettings.LeaveMethod}".TranslateSimple();
+    }
+
+    public void Draw(Rect region)
+    {
+        var listing = new Listing_Standard();
+
+        listing.Begin(region);
+
+        (Rect labelRect, Rect fieldRect) = listing.GetRect(Text.LineHeight * 1.5f).Split();
+        LabelDrawer.Draw(labelRect, "TKUtils.Abandon.Method.Label".TranslateSimple());
+        listing.DrawDescription("TKUtils.Abandon.Method.Description".TranslateSimple());
+
+        if (Widgets.ButtonText(fieldRect, _currentLeaveMethodText))
         {
-            var listing = new Listing_Standard();
-
-            listing.Begin(region);
-
-            (Rect labelRect, Rect fieldRect) = listing.GetRectAsForm();
-            SettingsHelper.DrawLabel(labelRect, "TKUtils.Abandon.Method.Label".Localize());
-            listing.DrawDescription("TKUtils.Abandon.Method.Description".Localize());
-
-            if (Widgets.ButtonText(fieldRect, $"TKUtils.Abandon.Method.{TkSettings.LeaveMethod}".Localize()))
-            {
-                Find.WindowStack.Add(new FloatMenu(TkSettings.LeaveMenuOptions));
-            }
-
-            if (!TkSettings.LeaveMethod.EqualsIgnoreCase(nameof(LeaveMethods.Thanos)))
-            {
-                listing.CheckboxLabeled("TKUtils.Abandon.Gear.Label".Localize(), ref TkSettings.DropInventory);
-                listing.DrawDescription("TKUtils.Abandon.Gear.Description".Localize());
-            }
-
-            listing.End();
+            Find.WindowStack.Add(_leaveMethods);
         }
 
-        public void Save()
+        if (!TkSettings.LeaveMethod.EqualsIgnoreCase(nameof(LeaveMethod.Thanos)))
         {
-            TkUtils.Instance.WriteSettings();
+            listing.CheckboxLabeled("TKUtils.Abandon.Gear.Label".TranslateSimple(), ref TkSettings.DropInventory);
+            listing.DrawDescription("TKUtils.Abandon.Gear.Description".TranslateSimple());
         }
+
+        listing.End();
+    }
+
+    public void Save()
+    {
+        TkUtils.Instance.WriteSettings();
     }
 }

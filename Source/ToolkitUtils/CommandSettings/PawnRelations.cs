@@ -15,43 +15,39 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using System;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using ToolkitUtils.UX;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.CommandSettings
+namespace SirRandoo.ToolkitUtils.CommandSettings;
+
+public class PawnRelations : ICommandSettings
 {
-    public class PawnRelations : ICommandSettings
+    private string _minimumBuffer = TkSettings.OpinionMinimum.ToString();
+
+    public void Draw(Rect region)
     {
-        private string minimumBuffer = TkSettings.OpinionMinimum.ToString();
+        var listing = new Listing_Standard();
 
-        public void Draw(Rect region)
+        listing.Begin(region);
+
+        if (!TkSettings.MinimalRelations)
         {
-            var listing = new Listing_Standard();
-
-            listing.Begin(region);
-
-            if (!TkSettings.MinimalRelations)
-            {
-                (Rect labelRect, Rect fieldRect) = listing.GetRectAsForm();
-                SettingsHelper.DrawLabel(labelRect, "TKUtils.PawnRelations.OpinionThreshold.Label".Localize());
-                Widgets.TextFieldNumeric(fieldRect, ref TkSettings.OpinionMinimum, ref minimumBuffer);
-                listing.DrawDescription("TKUtils.PawnRelations.OpinionThreshold.Description".Localize());
-            }
-
-            listing.CheckboxLabeled(
-                "TKUtils.PawnRelations.MinimalRelations.Label".Localize(),
-                ref TkSettings.MinimalRelations
-            );
-            listing.DrawDescription("TKUtils.PawnRelations.MinimalRelations.Description".Localize());
-
-            listing.End();
+            (Rect labelRect, Rect fieldRect) = listing.Split();
+            LabelDrawer.Draw(labelRect, "TKUtils.PawnRelations.OpinionThreshold.Label".TranslateSimple());
+            Widgets.TextFieldNumeric(fieldRect, ref TkSettings.OpinionMinimum, ref _minimumBuffer);
+            listing.DrawDescription("TKUtils.PawnRelations.OpinionThreshold.Description".TranslateSimple());
         }
 
-        public void Save()
-        {
-            TkUtils.Instance.WriteSettings();
-        }
+        listing.CheckboxLabeled("TKUtils.PawnRelations.MinimalRelations.Label".TranslateSimple(), ref TkSettings.MinimalRelations);
+        listing.DrawDescription("TKUtils.PawnRelations.MinimalRelations.Description".TranslateSimple());
+
+        listing.End();
+    }
+
+    public void Save()
+    {
+        TkUtils.Instance.WriteSettings();
     }
 }

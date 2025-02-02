@@ -24,45 +24,22 @@ using TwitchLib.Client.Models.Interfaces;
 using TwitchToolkit;
 using TwitchToolkit.Store;
 
-namespace SirRandoo.ToolkitUtils.Commands
+namespace SirRandoo.ToolkitUtils.Commands;
+
+[UsedImplicitly]
+public class GiveCoins : CommandBase
 {
-    [UsedImplicitly]
-    public class GiveCoins : CommandBase
+    public override void RunCommand(ITwitchMessage twitchMessage)
     {
-        public override void RunCommand([NotNull] ITwitchMessage message)
+        var worker = ArgWorker.CreateInstance(CommandFilter.Parse(twitchMessage.Message).Skip(1));
+
+        if (!worker.TryGetNextAsViewer(out Viewer viewer) || !worker.TryGetNextAsInt(out int amount))
         {
-            var worker = ArgWorker.CreateInstance(CommandFilter.Parse(message.Message).Skip(1));
-
-            if (!worker.TryGetNextAsViewer(out Viewer viewer) || !worker.TryGetNextAsInt(out int amount))
-            {
-                return;
-            }
-
-            // UserData gifterData = UserRegistry.GetData(message.Username);
-            // UserData gifteeData = UserRegistry.GetData(viewer.username);
-
-            // if (gifterData?.IsModerator == true && gifteeData?.IsModerator == true && gifterData.IsBroadcaster != true)
-            // {
-            //     message.Reply("TKUtils.GiveCoins.Moderators".Localize());
-            //     return;
-            // }
-            //
-            // if (message.Username.StartsWith(viewer.username, StringComparison.InvariantCultureIgnoreCase)
-            //     || viewer.username.StartsWith(message.Username, StringComparison.InvariantCultureIgnoreCase))
-            // {
-            //     message.Reply("TKUtils.GiveCoins.Alts".Localize());
-            //     return;
-            // }
-
-            viewer.GiveViewerCoins(amount);
-            Store_Logger.LogGiveCoins(message.Username, viewer.username, amount);
-            message.Reply(
-                "TKUtils.GiveCoins.Done".LocalizeKeyed(
-                    amount.ToString("N0"),
-                    viewer.username,
-                    viewer.GetViewerCoins().ToString("N0")
-                )
-            );
+            return;
         }
+
+        viewer.GiveViewerCoins(amount);
+        Store_Logger.LogGiveCoins(twitchMessage.Username, viewer.username, amount);
+        twitchMessage.Reply("TKUtils.GiveCoins.Done".LocalizeKeyed(amount.ToString("N0"), viewer.username, viewer.GetViewerCoins().ToString("N0")));
     }
 }

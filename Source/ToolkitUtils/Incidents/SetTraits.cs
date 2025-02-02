@@ -28,308 +28,321 @@ using TwitchToolkit;
 using TwitchToolkit.IncidentHelpers.IncidentHelper_Settings;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Incidents
+namespace SirRandoo.ToolkitUtils.Incidents;
+
+public class SetTraits : IncidentVariablesBase
 {
-    [UsedImplicitly(ImplicitUseTargetFlags.WithMembers)]
-    public class SetTraits : IncidentVariablesBase
+    private List<TraitEvent> _events;
+    private Pawn _pawn;
+
+    public override bool CanHappen(string msg, Viewer viewer)
     {
-        private List<TraitEvent> events;
-        private Pawn pawn;
+        string[] traitQueries = CommandFilter.Parse(msg).Skip(2).ToArray();
 
-        public override bool CanHappen(string msg, Viewer viewer)
+        if (traitQueries.Length <= 0)
         {
-            string[] traitQueries = CommandFilter.Parse(msg).Skip(2).ToArray();
+            return false;
+        }
 
-            if (traitQueries.Length <= 0)
+        if (!PurchaseHelper.TryGetPawn(viewer.username, out _pawn))
+        {
+            MessageHelper.ReplyToUser(viewer.username, "TKUtils.NoPawn".Localize());
+
+            return false;
+        }
+
+        var worker = ArgWorker.CreateInstance(CommandFilter.Parse(msg).Skip(2));
+        List<TraitItem> items = worker.GetAllAsTrait().ToList();
+
+        if (worker.HasNext() && !worker.GetLast().NullOrEmpty())
+        {
+            MessageHelper.ReplyToUser(viewer.username, "TKUtils.InvalidTraitQuery".LocalizeKeyed(worker.GetLast()));
+
+            return false;
+        }
+
+        if (!TryProcessTraits(_pawn!, items, out _events))
+        {
+            TraitEvent errored = _events.FirstOrDefault(e => !e.Error.NullOrEmpty());
+
+            if (errored != null)
             {
-                return false;
+                MessageHelper.ReplyToUser(viewer.username, errored.Error);
             }
 
-            if (!PurchaseHelper.TryGetPawn(viewer.username, out pawn))
+            return false;
+        }
+
+        if (_events.Count(e => e.ContributesToLimit) > AddTraitSettings.maxTraits)
+        {
+            MessageHelper.ReplyToUser(viewer.username, "TKUtils.Trait.LimitReached".LocalizeKeyed(AddTraitSettings.maxTraits));
+
+            return false;
+        }
+
+        int total = _events.Sum(
+            i =>
             {
-                MessageHelper.ReplyToUser(viewer.username, "TKUtils.NoPawn".Localize());
-                return false;
-            }
-
-            var worker = ArgWorker.CreateInstance(CommandFilter.Parse(msg).Skip(2));
-            List<TraitItem> items = worker.GetAllAsTrait().ToList();
-
-            if (worker.HasNext() && !worker.GetLast().NullOrEmpty())
-            {
-                MessageHelper.ReplyToUser(viewer.username, "TKUtils.InvalidTraitQuery".LocalizeKeyed(worker.GetLast()));
-                return false;
-            }
-
-            if (!TryProcessTraits(pawn!, items, out events))
-            {
-                TraitEvent errored = events.FirstOrDefault(e => !e.Error.NullOrEmpty());
-
-                if (errored != null)
+                switch (i.Type)
                 {
-                    MessageHelper.ReplyToUser(viewer.username, errored.Error);
+                    case EventType.Add:
+                        return i.Item.CostToAdd;
+                    case EventType.Remove:
+                        return i.Item.CostToRemove;
+                    default:
+                        return 0;
                 }
-
-                return false;
             }
+        );
 
-            if (events.Count(e => e.ContributesToLimit) > AddTraitSettings.maxTraits)
-            {
-                MessageHelper.ReplyToUser(
-                    viewer.username,
-                    "TKUtils.Trait.LimitReached".LocalizeKeyed(AddTraitSettings.maxTraits)
-                );
-                return false;
-            }
+        if (!viewer.CanAfford(total))
+        {
+            MessageHelper.ReplyToUser(viewer.username, "TKUtils.InsufficientBalance".LocalizeKeyed(total.ToString("N0"), viewer.GetViewerCoins().ToString("N0")));
 
-            int total = events.Sum(
-                i =>
-                {
-                    switch (i.Type)
+            return false;
+        }
+
+        return true;
+    }
+
+    [ContractAnnotation("=> true,traitEvents:notnull; => false,traitEvents:notnull")]
+    private bool TryProcessTraits(Pawn subject, IEnumerable<TraitItem> traits, out List<TraitEvent> traitEvents)
+    {
+        var container = new List<TraitEvent>();
+        List<TraitItem> traitItems = traits.ToList();
+        List<string> defNames = traitItems.Select(t => t.DefName).ToList();
+
+        container.AddRange(
+            subject.story.traits.allTraits.Where(t => !defNames.Contains(t.def.defName))
+               .Select(
+                    t =>
                     {
-                        case EventType.Add:
-                            return i.Item.CostToAdd;
-                        case EventType.Remove:
-                            return i.Item.CostToRemove;
-                        default:
-                            return 0;
+                        TraitItem trait = Data.Traits.Find(i => i.DefName.Equals(t.def.defName) && i.Degree == t.Degree);
+
+                        return !IsTraitRemovable(subject, trait, out string? error)
+                            ? new TraitEvent { Type = EventType.Noop, Error = error, Item = trait }
+                            : new TraitEvent { Type = EventType.Remove, Trait = t, Item = trait };
                     }
-                }
-            );
+                )
+        );
 
-            if (!viewer.CanAfford(total))
-            {
-                MessageHelper.ReplyToUser(
-                    viewer.username,
-                    "TKUtils.InsufficientBalance".LocalizeKeyed(
-                        total.ToString("N0"),
-                        viewer.GetViewerCoins().ToString("N0")
-                    )
-                );
-                return false;
-            }
-
-            return true;
-        }
-
-        private IEnumerable<TraitItem> FindTraits(Viewer viewer, [NotNull] params string[] traits)
-        {
-            foreach (string query in traits)
-            {
-                if (!Data.TryGetTrait(query, out TraitItem trait))
-                {
-                    MessageHelper.ReplyToUser(viewer.username, "TKUtils.InvalidTraitQuery".LocalizeKeyed(query));
-                    yield break;
-                }
-
-                yield return trait;
-            }
-        }
-
-        [ContractAnnotation("=> true,traitEvents:notnull; => false,traitEvents:notnull")]
-        private bool TryProcessTraits(
-            [NotNull] Pawn subject,
-            [NotNull] IEnumerable<TraitItem> traits,
-            out List<TraitEvent> traitEvents
-        )
-        {
-            var container = new List<TraitEvent>();
-            List<TraitItem> traitItems = traits.ToList();
-            List<string> defNames = traitItems.Select(t => t.DefName).ToList();
-
-            container.AddRange(
-                subject.story.traits.allTraits.Where(t => !defNames.Contains(t.def.defName))
-                   .Select(
-                        t =>
+        container.AddRange(
+            traitItems.Where(t => !subject.story.traits.HasTrait(t.TraitDef))
+               .Select(
+                    t =>
+                    {
+                        if (!t.CanAdd)
                         {
-                            TraitItem trait =
-                                Data.Traits.Find(i => i.DefName.Equals(t.def.defName) && i.Degree == t.Degree);
-
-                            if (!trait.CanRemove)
-                            {
-                                return new TraitEvent
-                                {
-                                    Type = EventType.Noop,
-                                    Error = "TKUtils.RemoveTrait.Disabled".LocalizeKeyed(trait.Name)
-                                };
-                            }
-
-                            return !IsTraitRemovable(trait, out string error)
-                                ? new TraitEvent { Type = EventType.Noop, Error = error, Item = trait }
-                                : new TraitEvent { Type = EventType.Remove, Trait = t, Item = trait };
+                            return new TraitEvent { Type = EventType.Noop, Error = "TKUtils.Trait.Disabled".LocalizeKeyed(t.Name) };
                         }
-                    )
-            );
 
-            container.AddRange(
-                traitItems.Where(t => !subject.story.traits.HasTrait(t.TraitDef))
-                   .Select(
-                        t =>
-                        {
-                            if (!t.CanAdd)
-                            {
-                                return new TraitEvent
-                                {
-                                    Type = EventType.Noop, Error = "TKUtils.Trait.Disabled".LocalizeKeyed(t.Name)
-                                };
-                            }
+                        return !IsTraitAddable(t, out string? error)
+                            ? new TraitEvent { Type = EventType.Noop, Error = error, Item = t }
+                            : new TraitEvent { Type = EventType.Add, Item = t };
+                    }
+                )
+        );
 
-                            return !IsTraitAddable(t, out string error)
-                                ? new TraitEvent { Type = EventType.Noop, Error = error, Item = t }
-                                : new TraitEvent { Type = EventType.Add, Item = t };
-                        }
-                    )
-            );
+        container.AddRange(
+            traitItems.Where(t => subject.story.traits.allTraits.Find(i => i.def.defName.Equals(t.DefName) && i.Degree == t.Degree) != null)
+               .Select(t => new TraitEvent { Type = EventType.Noop, Item = t })
+        );
 
-            container.AddRange(
-                traitItems.Where(
-                        t => subject.story.traits.allTraits.Find(
-                                 i => i.def.defName.Equals(t.DefName) && i.Degree == t.Degree
-                             )
-                             != null
-                    )
-                   .Select(t => new TraitEvent { Type = EventType.Noop, Item = t })
-            );
+        var final = new List<TraitEvent>(container.Where(e => e.Type == EventType.Remove));
+        final.AddRange(container.Where(t => t.Type != EventType.Remove).GroupBy(t => t.Item.DefName).Select(e => e.First()));
 
-            var final = new List<TraitEvent>(container.Where(e => e.Type == EventType.Remove));
-            final.AddRange(
-                container.Where(t => t.Type != EventType.Remove).GroupBy(t => t.Item.DefName).Select(e => e.First())
-            );
+        foreach (TraitEvent traitEvent in final.Where(f => f.Type == EventType.Add || f.Type == EventType.Noop))
+        {
+            TraitEvent conflictsWith = final.Where(f => f != traitEvent && (f.Type == EventType.Add || f.Type == EventType.Noop))
+               .FirstOrDefault(f => f.Item.TraitDef!.ConflictsWith(traitEvent.Item.TraitDef));
 
+            if (conflictsWith != null && string.IsNullOrEmpty(traitEvent.Error))
+            {
+                traitEvent.Error = "TKUtils.Trait.Conflict".LocalizeKeyed(traitEvent.Item.Name, conflictsWith.Item.Name);
 
-            traitEvents = final;
-            return true;
+                traitEvents = final;
+
+                return false;
+            }
         }
 
-        public override void Execute()
+        traitEvents = final;
+
+        return true;
+    }
+
+    public override void Execute()
+    {
+        foreach (TraitEvent ev in _events)
         {
-            foreach (TraitEvent ev in events)
+            ev.Execute(_pawn);
+
+            switch (ev.Type)
             {
-                ev.Execute(pawn);
+                case EventType.Add:
+                    Viewer.Charge(ev.Item.CostToAdd, ev.Item.TraitData?.KarmaType ?? storeIncident.karmaType);
 
-                switch (ev.Type)
-                {
-                    case EventType.Add:
-                        Viewer.Charge(ev.Item.CostToAdd, ev.Item.TraitData?.KarmaType ?? storeIncident.karmaType);
-                        break;
-                    case EventType.Remove:
-                        Viewer.Charge(
-                            ev.Item.CostToRemove,
-                            ev.Item.TraitData?.KarmaTypeForRemoving ?? storeIncident.karmaType
-                        );
-                        break;
-                }
+                    break;
+                case EventType.Remove:
+                    Viewer.Charge(ev.Item.CostToRemove, ev.Item.TraitData?.KarmaTypeForRemoving ?? storeIncident.karmaType);
+
+                    break;
             }
-
-            string traitString = pawn.story.traits.allTraits.Select(t => t.Label ?? t.def.defName).ToCommaList(true);
-            MessageHelper.SendConfirmation(Viewer.username, "TKUtils.SetTraits.Complete".LocalizeKeyed(traitString));
-
-            Find.LetterStack.ReceiveLetter(
-                "TKUtils.TraitLetter.Title".Localize(),
-                "TKUtils.TraitLetter.SetDescription".LocalizeKeyed(Viewer.username, traitString),
-                LetterDefOf.NeutralEvent,
-                pawn
-            );
         }
 
-        [ContractAnnotation("=> false,error:notnull; => true,error:null")]
-        private bool IsTraitRemovable(TraitItem trait, out string error)
+        string? traitString = _pawn.story.traits.allTraits.Select(t => t.Label ?? t.def.defName).ToCommaList(true);
+        MessageHelper.SendConfirmation(Viewer.username, "TKUtils.SetTraits.Complete".LocalizeKeyed(traitString));
+
+        Find.LetterStack.ReceiveLetter(
+            "TKUtils.TraitLetter.Title".Localize(),
+            "TKUtils.TraitLetter.SetDescription".LocalizeKeyed(Viewer.username, traitString),
+            LetterDefOf.NeutralEvent,
+            _pawn
+        );
+    }
+
+    [ContractAnnotation("=> false,error:notnull; => true,error:null")]
+    private bool IsTraitRemovable(Pawn pawn, TraitItem trait, out string? error)
+    {
+        if (!TraitHelper.IsRemovalAllowedByGenes(pawn, trait.TraitDef, trait.Degree))
         {
-            if (AlienRace.Enabled && AlienRace.IsTraitForced(pawn, trait.DefName, trait.Degree))
-            {
-                error = "TKUtils.RemoveTrait.Kind".LocalizeKeyed(pawn.kindDef.race.LabelCap, trait.Name);
-                return false;
-            }
+            error = "TKUtils.RemoveTrait.GeneLocked".LocalizeKeyed(trait.Name);
 
-            if (RationalRomance.Active && RationalRomance.IsTraitDisabled(trait.TraitDef!))
-            {
-                error = "TKUtils.RemoveTrait.RationalRomance".LocalizeKeyed(trait.Name.CapitalizeFirst());
-                return false;
-            }
-
-            if (CompatRegistry.Magic?.IsClassTrait(trait.TraitDef!) == true && !TkSettings.ClassChanges)
-            {
-                error = "TKUtils.RemoveTrait.Class".LocalizeKeyed(trait.Name);
-                return false;
-            }
-
-            error = null;
-            return true;
+            return false;
         }
 
-        [ContractAnnotation("=> true,error:null; => false,error:notnull")]
-        private bool IsTraitAddable([NotNull] TraitItem trait, out string error)
+        if (CompatRegistry.Alien != null && CompatRegistry.Alien.IsTraitForced(_pawn, trait.DefName, trait.Degree))
         {
-            if (trait.TraitDef.IsDisallowedByBackstory(pawn, trait.Degree, out Backstory backstory))
-            {
-                error = "TKUtils.Trait.RestrictedByBackstory".LocalizeKeyed(backstory.identifier, trait.Name);
-                return false;
-            }
+            error = "TKUtils.RemoveTrait.Kind".LocalizeKeyed(_pawn.kindDef.race.LabelCap, trait.Name);
 
-            if (pawn.kindDef.disallowedTraits?.Any(t => t.defName.Equals(trait.DefName)) == true)
-            {
-                error = "TKUtils.Trait.RestrictedByKind".LocalizeKeyed(pawn.kindDef.race.LabelCap, trait.Name);
-                return false;
-            }
-
-            if (trait.TraitDef.IsDisallowedByKind(pawn, trait.Degree))
-            {
-                error = "TKUtils.Trait.RestrictedByKind".LocalizeKeyed(pawn.kindDef.race.LabelCap, trait.Name);
-                return false;
-            }
-
-            error = null;
-            return true;
+            return false;
         }
 
-        private enum EventType { Remove, Add, Noop }
-
-        private class TraitEvent
+        if (RationalRomance.Active && RationalRomance.IsTraitDisabled(trait.TraitDef!))
         {
-            public string Error { get; set; }
-            public EventType Type { get; set; }
-            public TraitItem Item { get; set; }
-            public Trait Trait { get; set; }
+            error = "TKUtils.RemoveTrait.RationalRomance".LocalizeKeyed(trait.Name.CapitalizeFirst());
 
-            public bool ContributesToLimit =>
-                (Type == EventType.Noop || Type == EventType.Add) && Item.TraitData?.CanBypassLimit != true;
+            return false;
+        }
 
-            public void Execute(Pawn pawn)
+        if (CompatRegistry.Magic?.IsClassTrait(trait.TraitDef!) == true && !TkSettings.ClassChanges)
+        {
+            error = "TKUtils.RemoveTrait.Class".LocalizeKeyed(trait.Name);
+
+            return false;
+        }
+
+        if (!trait.CanRemove)
+        {
+            error = "TKUtils.RemoveTrait.Disabled".LocalizeKeyed(trait.Name);
+
+            return false;
+        }
+
+        error = null;
+
+        return true;
+    }
+
+    [ContractAnnotation("=> true,error:null; => false,error:notnull")]
+    private bool IsTraitAddable(TraitItem trait, out string? error)
+    {
+        if (!TraitHelper.IsOldEnoughForTraits(_pawn))
+        {
+            error = "TKUtils.Trait.TooYoung".Localize();
+
+            return false;
+        }
+        
+        if (trait.TraitDef.IsDisallowedByBackstory(_pawn, trait.Degree, out BackstoryDef backstory))
+        {
+            error = "TKUtils.Trait.RestrictedByBackstory".LocalizeKeyed(backstory.identifier, trait.Name);
+
+            return false;
+        }
+
+        if (!TraitHelper.IsAdditionAllowedByGenes(_pawn, trait.TraitDef, trait.Degree))
+        {
+            error = "TKUtils.Trait.GeneSuppressed".LocalizeKeyed(trait.Name);
+
+            return false;
+        }
+
+        if (_pawn.kindDef.disallowedTraits?.Any(t => t.defName.Equals(trait.DefName)) == true)
+        {
+            error = "TKUtils.Trait.RestrictedByKind".LocalizeKeyed(_pawn.kindDef.race.LabelCap, trait.Name);
+
+            return false;
+        }
+
+        if (trait.TraitDef.IsDisallowedByKind(_pawn, trait.Degree))
+        {
+            error = "TKUtils.Trait.RestrictedByKind".LocalizeKeyed(_pawn.kindDef.race.LabelCap, trait.Name);
+
+            return false;
+        }
+
+        if (!trait.CanAdd)
+        {
+            error = "TKUtils.Trait.Disabled".LocalizeKeyed(trait.Name);
+
+            return false;
+        }
+
+        error = null;
+
+        return true;
+    }
+
+    private enum EventType { Remove, Add, Noop }
+
+    private sealed class TraitEvent
+    {
+        public string? Error { get; set; }
+        public EventType Type { get; set; }
+        public TraitItem Item { get; set; }
+        public Trait Trait { get; set; }
+
+        public bool ContributesToLimit => (Type == EventType.Noop || Type == EventType.Add) && Item.TraitData?.CanBypassLimit != true;
+
+        public void Execute(Pawn pawn)
+        {
+            switch (Type)
             {
-                switch (Type)
-                {
-                    case EventType.Add:
-                        AddTrait(pawn);
-                        break;
-                    case EventType.Remove:
-                        RemoveTrait(pawn);
-                        break;
-                }
+                case EventType.Add:
+                    AddTrait(pawn);
+
+                    break;
+                case EventType.Remove:
+                    RemoveTrait(pawn);
+
+                    break;
+            }
+        }
+
+        private void AddTrait(Pawn pawn)
+        {
+            if (Item == null)
+            {
+                return;
             }
 
-            private void AddTrait(Pawn pawn)
-            {
-                if (Item == null)
-                {
-                    return;
-                }
+            TraitHelper.GivePawnTrait(pawn, new Trait(Item.TraitDef, Item.Degree));
+        }
 
-                TraitHelper.GivePawnTrait(pawn, new Trait(Item.TraitDef, Item.Degree));
+        private void RemoveTrait(Pawn pawn)
+        {
+            if (Trait == null)
+            {
+                return;
             }
 
-            private void RemoveTrait(Pawn pawn)
+            if (CompatRegistry.Magic?.IsClassTrait(Trait.def) == true && TkSettings.ResetClass)
             {
-                if (Trait == null)
-                {
-                    return;
-                }
-
-                if (CompatRegistry.Magic?.IsClassTrait(Trait.def) == true && TkSettings.ResetClass)
-                {
-                    CompatRegistry.Magic.ResetClass(pawn);
-                }
-
-                TraitHelper.RemoveTraitFromPawn(pawn, Trait);
+                CompatRegistry.Magic.ResetClass(pawn);
             }
+
+            TraitHelper.RemoveTraitFromPawn(pawn, Trait);
         }
     }
 }

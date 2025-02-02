@@ -22,42 +22,42 @@ using TwitchToolkit;
 using TwitchToolkit.IncidentHelpers.Special;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Incidents
+namespace SirRandoo.ToolkitUtils.Incidents;
+
+public class ReviveMe : IncidentVariablesBase
 {
-    [UsedImplicitly]
-    public class ReviveMe : IncidentVariablesBase
+    private Pawn _pawn;
+
+    public override bool CanHappen(string msg, Viewer viewer)
     {
-        private Pawn pawn;
-
-        public override bool CanHappen(string msg, [NotNull] Viewer viewer)
+        if (!PurchaseHelper.TryGetPawn(viewer.username, out _pawn))
         {
-            if (!PurchaseHelper.TryGetPawn(viewer.username, out pawn))
-            {
-                MessageHelper.ReplyToUser(viewer.username, "TKUtils.NoPawn".Localize());
-                return false;
-            }
+            MessageHelper.ReplyToUser(viewer.username, "TKUtils.NoPawn".Localize());
 
-            if (PawnTracker.pawnsToRevive.Contains(pawn))
-            {
-                return false;
-            }
-
-            PawnTracker.pawnsToRevive.Add(pawn);
-            return true;
+            return false;
         }
 
-        public override void Execute()
+        if (PawnTracker.pawnsToRevive.Contains(_pawn))
         {
-            pawn.TryResurrect();
-            Viewer.Charge(storeIncident);
-            MessageHelper.SendConfirmation(Viewer.username, "TKUtils.ReviveMe.Complete".Localize());
-
-            Find.LetterStack.ReceiveLetter(
-                "TKUtils.RevivalLetter.Title".Localize(),
-                "TKUtils.RevivalLetter.Description".LocalizeKeyed(Viewer.username),
-                LetterDefOf.PositiveEvent,
-                pawn
-            );
+            return false;
         }
+
+        PawnTracker.pawnsToRevive.Add(_pawn);
+
+        return true;
+    }
+
+    public override void Execute()
+    {
+        _pawn.TryResurrect();
+        Viewer.Charge(storeIncident);
+        MessageHelper.SendConfirmation(Viewer.username, "TKUtils.ReviveMe.Complete".Localize());
+
+        Find.LetterStack.ReceiveLetter(
+            "TKUtils.RevivalLetter.Title".Localize(),
+            "TKUtils.RevivalLetter.Description".LocalizeKeyed(Viewer.username),
+            LetterDefOf.PositiveEvent,
+            _pawn
+        );
     }
 }

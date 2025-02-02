@@ -16,96 +16,90 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Text;
-using JetBrains.Annotations;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Helpers
+namespace SirRandoo.ToolkitUtils.Helpers;
+
+[StaticConstructorOnStartup]
+public static class Translator
 {
-    [StaticConstructorOnStartup]
-    public static class Translator
+    private static readonly ConcurrentDictionary<string, string?> TranslationProxy = new();
+
+    static Translator()
     {
-        private static readonly ConcurrentDictionary<string, string> TranslationProxy;
+        CopyKeys();
+    }
 
-        static Translator()
+    public static void Invalidate()
+    {
+        TranslationProxy.Clear();
+    }
+
+    public static void CopyKeys()
+    {
+        LoadedLanguage active = LanguageDatabase.activeLanguage;
+
+        if (active == null)
         {
-            TranslationProxy = new ConcurrentDictionary<string, string>();
-            CopyKeys();
+            return;
         }
 
-        internal static void Invalidate()
+        var builder = new StringBuilder();
+
+        foreach ((string? key, LoadedLanguage.KeyedReplacement? value) in active.keyedReplacements)
         {
-            TranslationProxy.Clear();
-        }
-
-        internal static void CopyKeys()
-        {
-            LoadedLanguage active = LanguageDatabase.activeLanguage;
-
-            if (active == null)
+            if (!TranslationProxy.TryAdd(key, value.value))
             {
-                return;
-            }
-
-            var builder = new StringBuilder();
-            foreach ((string key, LoadedLanguage.KeyedReplacement value) in active.keyedReplacements)
-            {
-                if (!TranslationProxy.TryAdd(key, value.value))
-                {
-                    builder.AppendLine($"- {key}");
-                }
-            }
-
-            if (builder.Length <= 0)
-            {
-                return;
-            }
-
-            builder.Insert(0, "Could not copy the following translations:");
-            builder.AppendLine();
-            builder.AppendLine("You may experience translation errors!");
-            LogHelper.Warn(builder.ToString());
-        }
-
-        public static string Localize([NotNull] this string key)
-        {
-            return TranslationProxy.TryGetValue(key, out string value) ? value : key;
-        }
-
-        public static string Localize([NotNull] this string key, string backup)
-        {
-            if (TranslationProxy.TryGetValue(key, out string initial))
-            {
-                return initial;
-            }
-
-            return TranslationProxy.TryGetValue(backup, out string back) ? back : key;
-        }
-
-        [NotNull]
-        public static string LocalizeKeyed([NotNull] this string key, params object[] args)
-        {
-            try
-            {
-                return string.Format(Localize(key), args);
-            }
-            catch (Exception)
-            {
-                return key;
+                builder.AppendLine($"- {key}");
             }
         }
 
-        [NotNull]
-        public static string LocalizeKeyedBackup([NotNull] this string key, string backup, params object[] args)
+        if (builder.Length <= 0)
         {
-            try
-            {
-                return string.Format(Localize(key, backup), args);
-            }
-            catch (Exception)
-            {
-                return key;
-            }
+            return;
+        }
+
+        builder.Insert(0, "Could not copy the following translations:");
+        builder.AppendLine();
+        builder.AppendLine("You may experience translation errors!");
+        TkUtils.Logger.Warn(builder.ToString());
+    }
+
+    public static string Localize(this string key) => TranslationProxy!.GetValueOrDefault(key, key);
+
+    public static string Localize(this string key, string backup)
+    {
+        if (TranslationProxy.TryGetValue(key, out string? initial))
+        {
+            return initial!;
+        }
+
+        return TranslationProxy.GetValueOrDefault(backup, key)!;
+    }
+
+    public static string LocalizeKeyed(this string key, params object?[] args)
+    {
+        try
+        {
+            return string.Format(Localize(key), args);
+        }
+        catch (Exception)
+        {
+            return key;
+        }
+    }
+
+    public static string LocalizeKeyedBackup(this string key, string backup, params object[] args)
+    {
+        try
+        {
+            return string.Format(Localize(key, backup), args);
+        }
+        catch (Exception)
+        {
+            return key;
         }
     }
 }

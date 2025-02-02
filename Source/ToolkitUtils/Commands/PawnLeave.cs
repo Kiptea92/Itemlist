@@ -24,87 +24,90 @@ using TwitchToolkit.PawnQueue;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Commands
+namespace SirRandoo.ToolkitUtils.Commands;
+
+[UsedImplicitly]
+public class PawnLeave : CommandBase
 {
-    [UsedImplicitly]
-    public class PawnLeave : CommandBase
+    public override void RunCommand(ITwitchMessage twitchMessage)
     {
-        public override void RunCommand([NotNull] ITwitchMessage msg)
+        if (!PurchaseHelper.TryGetPawn(twitchMessage.Username, out Pawn pawn))
         {
-            if (!PurchaseHelper.TryGetPawn(msg.Username, out Pawn pawn))
-            {
-                msg.Reply("TKUtils.NoPawn".Localize());
-                return;
-            }
+            twitchMessage.Reply("TKUtils.NoPawn".Localize());
 
-            if (pawn!.IsCaravanMember())
-            {
-                msg.Reply("TKUtils.Leave.Caravan".Localize());
-                return;
-            }
-
-            var component = Current.Game.GetComponent<GameComponentPawns>();
-
-            if (CompatRegistry.Magic?.IsUndead(pawn) ?? false)
-            {
-                msg.Reply("TKUtils.Leave.Undead".Localize());
-                component?.pawnHistory.Remove(msg.Username);
-
-                if (pawn.Name is NameTriple name)
-                {
-                    pawn.Name = new NameTriple(name.First ?? "", name.Last ?? "", name.Last ?? "");
-                }
-
-                return;
-            }
-
-            ForceLeave(msg, pawn);
-            component.pawnHistory.Remove(msg.Username);
+            return;
         }
 
-        private static void ForceLeave([NotNull] ITwitchMessage twitchMessage, [NotNull] Pawn pawn)
+        if (pawn!.IsCaravanMember())
         {
-            if (TkSettings.LeaveMethod.EqualsIgnoreCase("Thanos")
-                && FilthMaker.TryMakeFilth(
-                    pawn.Position,
-                    pawn.Map,
-                    ThingDefOf.Filth_Ash,
-                    pawn.LabelShortCap,
-                    Mathf.CeilToInt(pawn.BodySize * 0.6f)
-                ))
+            twitchMessage.Reply("TKUtils.Leave.Caravan".Localize());
+
+            return;
+        }
+
+        var component = Current.Game.GetComponent<GameComponentPawns>();
+
+        if (CompatRegistry.Magic?.IsUndead(pawn) ?? false)
+        {
+            twitchMessage.Reply("TKUtils.Leave.Undead".Localize());
+            component?.pawnHistory.Remove(twitchMessage.Username);
+
+            if (pawn.Name is NameTriple name)
             {
-                twitchMessage.Reply("TKUtils.Leave.Thanos".Localize());
-                Find.LetterStack.ReceiveLetter(
-                    "TKUtils.LeaveLetter.ThanosTitle".Localize(),
-                    "TKUtils.LeaveLetter.ThanosDescription".LocalizeKeyed(pawn.LabelShortCap),
-                    LetterDefOf.NeutralEvent,
-                    new LookTargets(pawn.Position, pawn.Map)
-                );
-                pawn.Destroy();
+                pawn.Name = new NameTriple(name.First ?? "", name.Last ?? "", name.Last ?? "");
             }
-            else
+
+            return;
+        }
+
+        ForceLeave(twitchMessage, pawn);
+        component.pawnHistory.Remove(twitchMessage.Username);
+    }
+
+    private static void ForceLeave(ITwitchMessage twitchMessage, Pawn pawn)
+    {
+        if (TkSettings.LeaveMethod.EqualsIgnoreCase("Thanos") && FilthMaker.TryMakeFilth(
+            pawn.Position,
+            pawn.Map,
+            ThingDefOf.Filth_Ash,
+            pawn.LabelShortCap,
+            Mathf.CeilToInt(pawn.BodySize * 0.6f)
+        ))
+        {
+            twitchMessage.Reply("TKUtils.Leave.Thanos".Localize());
+
+            Find.LetterStack.ReceiveLetter(
+                "TKUtils.LeaveLetter.ThanosTitle".Localize(),
+                "TKUtils.LeaveLetter.ThanosDescription".LocalizeKeyed(pawn.LabelShortCap),
+                LetterDefOf.NeutralEvent,
+                new LookTargets(pawn.Position, pawn.Map)
+            );
+
+            pawn.Destroy();
+        }
+        else
+        {
+            if (TkSettings.DropInventory && pawn.AnythingToStrip())
             {
-                if (TkSettings.DropInventory && pawn.AnythingToStrip())
-                {
-                    pawn.Strip();
-                }
-
-                twitchMessage.Reply("TKUtils.Leave.Generic".Localize());
-                Find.LetterStack.ReceiveLetter(
-                    "TKUtils.LeaveLetter.GenericTitle".Localize(),
-                    "TKUtils.LeaveLetter.GenericDescription".LocalizeKeyed(pawn.LabelShortCap),
-                    LetterDefOf.NeutralEvent,
-                    new LookTargets(pawn.Position, pawn.Map)
-                );
-
-                if (pawn.Faction != null)
-                {
-                    pawn.SetFaction(null);
-                }
-
-                pawn.jobs.StopAll();
-                pawn.health.surgeryBills.Clear();
+                pawn.Strip();
             }
+
+            twitchMessage.Reply("TKUtils.Leave.Generic".Localize());
+
+            Find.LetterStack.ReceiveLetter(
+                "TKUtils.LeaveLetter.GenericTitle".Localize(),
+                "TKUtils.LeaveLetter.GenericDescription".LocalizeKeyed(pawn.LabelShortCap),
+                LetterDefOf.NeutralEvent,
+                new LookTargets(pawn.Position, pawn.Map)
+            );
+
+            if (pawn.Faction != null)
+            {
+                pawn.SetFaction(null);
+            }
+
+            pawn.jobs.StopAll();
+            pawn.health.surgeryBills.Clear();
         }
     }
 }

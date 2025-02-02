@@ -1,24 +1,18 @@
-﻿// MIT License
+﻿// ToolkitUtils
+// Copyright (C) 2021  SirRandoo
 // 
-// Copyright (c) 2021 SirRandoo
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 // 
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
 // 
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
 using System.Linq;
@@ -31,110 +25,107 @@ using SirRandoo.ToolkitUtils.Utils.ModComp;
 using TwitchToolkit;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Incidents
+namespace SirRandoo.ToolkitUtils.Incidents;
+
+public class ClearTraits : IncidentVariablesBase
 {
-    [UsedImplicitly(ImplicitUseTargetFlags.WithMembers)]
-    public class ClearTraits : IncidentVariablesBase
+    private Pawn _pawn;
+    private List<(Trait trait, TraitItem item)> _traits;
+
+    public override bool CanHappen(string msg, Viewer viewer)
     {
-        private Pawn pawn;
-        private List<(Trait trait, TraitItem item)> traits;
+        Viewer = viewer;
 
-        public override bool CanHappen(string msg, [NotNull] Viewer viewer)
+        if (!PurchaseHelper.TryGetPawn(viewer.username, out _pawn))
         {
-            Viewer = viewer;
-            if (!PurchaseHelper.TryGetPawn(viewer.username, out pawn))
-            {
-                MessageHelper.ReplyToUser(viewer.username, "TKUtils.NoPawn".Localize());
-                return false;
-            }
+            MessageHelper.ReplyToUser(viewer.username, "TKUtils.NoPawn".Localize());
 
-            traits = new List<(Trait trait, TraitItem item)>();
-
-            foreach (Trait trait in pawn!.story.traits.allTraits)
-            {
-                TraitItem item = Data.Traits.Find(t => t.DefName.Equals(trait.def.defName) && t.Degree == trait.Degree);
-
-                if (item == null || !CanRemove(item))
-                {
-                    continue;
-                }
-
-                traits.Add((trait, item));
-            }
-
-            int total = traits.Sum(t => t.item.CostToRemove);
-            if (!viewer.CanAfford(total))
-            {
-                MessageHelper.ReplyToUser(
-                    viewer.username,
-                    "TKUtils.InsufficientBalance".LocalizeKeyed(
-                        total.ToString("N0"),
-                        viewer.GetViewerCoins().ToString("N0")
-                    )
-                );
-                return false;
-            }
-
-            return traits.Count > 0;
-        }
-
-        public override void Execute()
-        {
-            foreach ((Trait trait, TraitItem item) in traits)
-            {
-                if (CompatRegistry.Magic?.IsClassTrait(trait.def) == true && TkSettings.ResetClass)
-                {
-                    CompatRegistry.Magic?.ResetClass(pawn);
-                }
-
-                TraitHelper.RemoveTraitFromPawn(pawn, trait);
-
-                if (!(item is null))
-                {
-                    Viewer.Charge(item.CostToRemove, item.TraitData?.KarmaTypeForRemoving ?? storeIncident.karmaType);
-                }
-            }
-
-            MessageHelper.SendConfirmation(
-                message,
-                "TKUtils.ClearTraits.Complete".LocalizeKeyed(traits.Count.ToString("N0"))
-            );
-
-            Find.LetterStack.ReceiveLetter(
-                "TKUtils.TraitLetter.Title".Localize(),
-                "TKUtils.TraitLetter.ClearDescription".LocalizeKeyed(Viewer.username),
-                LetterDefOf.NeutralEvent,
-                pawn
-            );
-        }
-
-        private bool CanRemove(TraitItem trait)
-        {
-            if (RationalRomance.Active && RationalRomance.IsTraitDisabled(trait.TraitDef!))
-            {
-                MessageHelper.ReplyToUser(
-                    Viewer.username,
-                    "TKUtils.RemoveTrait.RationalRomance".LocalizeKeyed(trait.Name.CapitalizeFirst())
-                );
-                return false;
-            }
-
-            if (AlienRace.Enabled && AlienRace.IsTraitForced(pawn, trait.DefName, trait.Degree))
-            {
-                MessageHelper.ReplyToUser(
-                    Viewer.username,
-                    "TKUtils.RemoveTrait.Kind".LocalizeKeyed(pawn.kindDef.race.LabelCap, trait.Name)
-                );
-                return false;
-            }
-
-            if (CompatRegistry.Magic?.IsClassTrait(trait.TraitDef!) != true || TkSettings.ClassChanges)
-            {
-                return true;
-            }
-
-            MessageHelper.ReplyToUser(Viewer.username, "TKUtils.RemoveTrait.Class".LocalizeKeyed(trait.Name));
             return false;
         }
+
+        _traits = new List<(Trait trait, TraitItem item)>();
+
+        foreach (Trait trait in _pawn!.story.traits.allTraits)
+        {
+            TraitItem item = Data.Traits.Find(t => t.DefName.Equals(trait.def.defName) && t.Degree == trait.Degree);
+
+            if (!(item is { CanRemove: true }) || !CanRemove(_pawn, item))
+            {
+                continue;
+            }
+
+            _traits.Add((trait, item));
+        }
+
+        int total = _traits.Sum(t => t.item.CostToRemove);
+
+        if (viewer.CanAfford(total))
+        {
+            return _traits.Count > 0;
+        }
+
+        MessageHelper.ReplyToUser(viewer.username, "TKUtils.InsufficientBalance".LocalizeKeyed(total.ToString("N0"), viewer.GetViewerCoins().ToString("N0")));
+
+        return false;
+    }
+
+    public override void Execute()
+    {
+        foreach ((Trait trait, TraitItem item) in _traits)
+        {
+            if (CompatRegistry.Magic?.IsClassTrait(trait.def) == true && TkSettings.ResetClass)
+            {
+                CompatRegistry.Magic?.ResetClass(_pawn);
+            }
+
+            TraitHelper.RemoveTraitFromPawn(_pawn, trait);
+
+            if (!(item is null))
+            {
+                Viewer.Charge(item.CostToRemove, item.TraitData?.KarmaTypeForRemoving ?? storeIncident.karmaType);
+            }
+        }
+
+        MessageHelper.SendConfirmation(message, "TKUtils.ClearTraits.Complete".LocalizeKeyed(_traits.Count.ToString("N0")));
+
+        Find.LetterStack.ReceiveLetter(
+            "TKUtils.TraitLetter.Title".Localize(),
+            "TKUtils.TraitLetter.ClearDescription".LocalizeKeyed(Viewer.username),
+            LetterDefOf.NeutralEvent,
+            _pawn
+        );
+    }
+
+    private bool CanRemove(Pawn pawn, TraitItem trait)
+    {
+        if (!TraitHelper.IsRemovalAllowedByGenes(pawn, trait.TraitDef, trait.Degree))
+        {
+            MessageHelper.ReplyToUser(Viewer.username, "TKUtils.RemoveTrait.GeneLocked".LocalizeKeyed(trait.Name));
+
+            return false;
+        }
+
+        if (RationalRomance.Active && RationalRomance.IsTraitDisabled(trait.TraitDef!))
+        {
+            MessageHelper.ReplyToUser(Viewer.username, "TKUtils.RemoveTrait.RationalRomance".LocalizeKeyed(trait.Name.CapitalizeFirst()));
+
+            return false;
+        }
+
+        if (CompatRegistry.Alien != null && CompatRegistry.Alien.IsTraitForced(_pawn, trait.DefName, trait.Degree))
+        {
+            MessageHelper.ReplyToUser(Viewer.username, "TKUtils.RemoveTrait.Kind".LocalizeKeyed(_pawn.kindDef.race.LabelCap, trait.Name));
+
+            return false;
+        }
+
+        if (CompatRegistry.Magic?.IsClassTrait(trait.TraitDef!) != true || TkSettings.ClassChanges)
+        {
+            return true;
+        }
+
+        MessageHelper.ReplyToUser(Viewer.username, "TKUtils.RemoveTrait.Class".LocalizeKeyed(trait.Name));
+
+        return false;
     }
 }

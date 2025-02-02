@@ -14,30 +14,29 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using ToolkitUtils.UX;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.CommandSettings
+namespace SirRandoo.ToolkitUtils.CommandSettings;
+
+public class Balance : ICommandSettings
 {
-    public class Balance : ICommandSettings
+    public void Draw(Rect region)
     {
-        public void Draw(Rect region)
-        {
-            var listing = new Listing_Standard();
+        var listing = new Listing_Standard();
 
-            listing.Begin(region);
+        listing.Begin(region);
 
-            listing.CheckboxLabeled("TKUtils.CoinRate.Label".Localize(), ref TkSettings.ShowCoinRate);
-            listing.DrawDescription("TKUtils.CoinRate.Description".Localize());
+        listing.CheckboxLabeled("TKUtils.CoinRate.Label".TranslateSimple(), ref TkSettings.ShowCoinRate);
+        listing.DrawDescription("TKUtils.CoinRate.Description".TranslateSimple());
 
-            listing.End();
-        }
+        listing.End();
+    }
 
-        public void Save()
-        {
-            TkUtils.Instance.WriteSettings();
-        }
+    public void Save()
+    {
+        TkUtils.Instance.WriteSettings();
     }
 }

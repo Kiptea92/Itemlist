@@ -1,126 +1,153 @@
 ﻿// ToolkitUtils
 // Copyright (C) 2021  SirRandoo
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
+using RimWorld;
 using SirRandoo.ToolkitUtils.Helpers;
-using SirRandoo.ToolkitUtils.Models;
 using SirRandoo.ToolkitUtils.Utils;
+using SirRandoo.ToolkitUtils.Workers;
 using ToolkitCore.Utilities;
 using TwitchLib.Client.Models.Interfaces;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Commands
+namespace SirRandoo.ToolkitUtils.Commands;
+
+[UsedImplicitly]
+public class Database : CommandBase
 {
-    [UsedImplicitly]
-    public class Database : CommandBase
+    private static readonly Dictionary<string, Category> Index = new Dictionary<string, Category>
     {
-        private static readonly Dictionary<string, string> Index;
-        private string invoker;
+        { "weapon", Category.Weapon },
+        { "weapons", Category.Weapon },
+        { "gun", Category.Weapon },
+        { "sword", Category.Weapon },
+        { "melee", Category.Weapon },
+        { "ranged", Category.Weapon },
+        { "club", Category.Weapon },
+        { "clubs", Category.Weapon },
+        { "knife", Category.Weapon },
+        { "knives", Category.Weapon },
+        { "spell", Category.TMagic },
+        { "spells", Category.TMagic },
+        { "ability", Category.TMagic },
+        { "abilities", Category.TMagic }
+    };
 
-        static Database()
+    private static readonly List<StatDef> WeaponStats = new List<StatDef> { StatDefOf.AccuracyLong, StatDefOf.AccuracyMedium, StatDefOf.AccuracyShort };
+
+    private static readonly List<StatDef> RangedWeaponStats = new List<StatDef> { StatDefOf.RangedWeapon_Cooldown, StatDefOf.RangedWeapon_DamageMultiplier };
+
+    private static readonly List<StatDef> MeleeWeaponStats = new List<StatDef>
+    {
+        StatDefOf.MeleeWeapon_AverageDPS,
+        StatDefOf.MeleeWeapon_CooldownMultiplier,
+        StatDefOf.MeleeWeapon_DamageMultiplier
+    };
+
+    private string? _invoker;
+
+    public override void RunCommand(ITwitchMessage twitchMessage)
+    {
+        _invoker = twitchMessage.Username;
+        string[] segments = CommandFilter.Parse(twitchMessage.Message).Skip(1).ToArray();
+        string? category = segments.FirstOrFallback("");
+        string? query = segments.Skip(1).FirstOrFallback("");
+
+        if (!Index.TryGetValue(category.ToLowerInvariant(), out Category result))
         {
-            Index = new Dictionary<string, string>
-            {
-                { "weapon", "weapons" },
-                { "weapons", "weapons" },
-                { "gun", "weapons" },
-                { "sword", "weapons" },
-                { "melee", "weapons" },
-                { "ranged", "weapons" },
-                { "club", "weapons" },
-                { "clubs", "weapons" },
-                { "knife", "weapons" },
-                { "knives", "weapons" }
-            };
+            query = category;
         }
 
-        public override void RunCommand([NotNull] ITwitchMessage twitchMessage)
-        {
-            invoker = twitchMessage.Username;
-            string[] segments = CommandFilter.Parse(twitchMessage.Message).Skip(1).ToArray();
-            string category = segments.FirstOrFallback("");
-            string query = segments.Skip(1).FirstOrFallback("");
+        PerformLookup(result, query);
+    }
 
-            if (!Index.TryGetValue(category.ToLowerInvariant(), out string _))
+    private void NotifyLookupComplete(string? result)
+    {
+        if (result.NullOrEmpty())
+        {
+            return;
+        }
+
+        MessageHelper.ReplyToUser(_invoker, result);
+    }
+
+    private void PerformWeaponLookup(string? query)
+    {
+        var worker = ArgWorker.CreateInstance(query);
+
+        if (!worker.TryGetNextAsItem(out ArgWorker.ItemProxy item) || !item.IsValid() || !item.Thing.Thing.IsWeapon)
+        {
+            MessageHelper.ReplyToUser(_invoker, "TKUtils.InvalidItemQuery".LocalizeKeyed(worker.GetLast()));
+
+            return;
+        }
+
+        if (item.TryGetError(out string? error))
+        {
+            MessageHelper.ReplyToUser(_invoker, error);
+
+            return;
+        }
+
+        var result = new List<string>();
+
+        Thing thing = PurchaseHelper.MakeThing(item.Thing.Thing, item.Stuff.Thing, item.Quality);
+
+        CommandRouter.MainThreadCommands.Enqueue(
+            () =>
             {
-                query = category;
-                category = "weapons";
+                result.AddRange(WeaponStats.Select(s => s.ValueToString(thing.GetStatValue(s))));
+
+                if (item.Thing.Thing.IsMeleeWeapon)
+                {
+                    result.AddRange(MeleeWeaponStats.Select(s => s.ValueToString(thing.GetStatValue(s))));
+                }
+
+                if (item.Thing.Thing.IsRangedWeapon)
+                {
+                    result.AddRange(RangedWeaponStats.Select(s => s.ValueToString(thing.GetStatValue(s))));
+                }
+
+                NotifyLookupComplete(ResponseHelper.JoinPair(item.Thing.ToString(), result.GroupedJoin()));
             }
+        );
+    }
 
-            PerformLookup(category, query);
-        }
+    private void PerformTMagicLookup(string? query)
+    {
+        CommandRouter.MainThreadCommands.Enqueue(() => NotifyLookupComplete(CompatRegistry.Magic?.GetSkillDescription(_invoker, query)));
+    }
 
-        private void NotifyLookupComplete(string result)
+    private void PerformLookup(Category category, string? query)
+    {
+        switch (category)
         {
-            if (result.NullOrEmpty())
-            {
+            case Category.Weapon:
+                PerformWeaponLookup(query);
+
                 return;
-            }
+            case Category.TMagic when CompatRegistry.Magic != null:
+                PerformTMagicLookup(query);
 
-            MessageHelper.ReplyToUser(invoker, result);
-        }
-
-        private void PerformWeaponLookup(string query)
-        {
-            ThingItem weapon = Data.Items.Where(t => t.Thing.IsWeapon)
-               .FirstOrDefault(
-                    t => t.Name.EqualsIgnoreCase(query.ToToolkit())
-                         || t.DefName.ToToolkit().EqualsIgnoreCase(query.ToToolkit())
-                );
-
-            if (weapon == null)
-            {
                 return;
-            }
-
-            var result = new List<string>();
-
-            if (!weapon.Thing.statBases.NullOrEmpty())
-            {
-                result.AddRange(weapon.Thing.statBases.Select(stat => $"{stat.value} {stat.stat.label}"));
-            }
-
-            if (!weapon.Thing.equippedStatOffsets.NullOrEmpty())
-            {
-                result.AddRange(weapon.Thing.equippedStatOffsets.Select(stat => $"{stat.ValueToStringAsOffset}"));
-            }
-
-            if (!weapon.Thing.damageMultipliers.NullOrEmpty())
-            {
-                result.AddRange(weapon.Thing.damageMultipliers.Select(m => $"{m.damageDef.LabelCap} x{m.multiplier}"));
-            }
-
-            NotifyLookupComplete(ResponseHelper.JoinPair(weapon.Name, result.GroupedJoin()));
-        }
-
-        private void PerformLookup([NotNull] string category, string query)
-        {
-            if (!Index.TryGetValue(category.ToLowerInvariant(), out string result))
-            {
-                return;
-            }
-
-            switch (result)
-            {
-                case "weapons":
-                    PerformWeaponLookup(query);
-                    return;
-            }
         }
     }
+
+    // ReSharper disable once InconsistentNaming
+    private enum Category { Weapon, TMagic }
 }

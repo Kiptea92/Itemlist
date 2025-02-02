@@ -22,45 +22,44 @@ using SirRandoo.ToolkitUtils.Utils.ModComp;
 using TwitchToolkit;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Incidents
+namespace SirRandoo.ToolkitUtils.Incidents;
+
+public class Immortality : IncidentVariablesBase
 {
-    [UsedImplicitly]
-    public class Immortality : IncidentVariablesBase
+    private Pawn _pawn;
+
+    public override bool CanHappen(string msg, Viewer viewer)
     {
-        private Pawn pawn;
-
-        public override bool CanHappen(string msg, [NotNull] Viewer viewer)
+        if (!PurchaseHelper.TryGetPawn(viewer.username, out _pawn))
         {
-            if (!PurchaseHelper.TryGetPawn(viewer.username, out pawn))
-            {
-                MessageHelper.ReplyToUser(viewer.username, "TKUtils.NoPawn".Localize());
-                return false;
-            }
+            MessageHelper.ReplyToUser(viewer.username, "TKUtils.NoPawn".Localize());
 
-            if (!Immortals.Active)
-            {
-                return false;
-            }
-
-            return !pawn!.health.hediffSet.HasHediff(Immortals.ImmortalHediffDef);
+            return false;
         }
 
-        public override void Execute()
+        if (!Immortals.Active)
         {
-            if (!Immortals.TryGrantImmortality(pawn))
-            {
-                return;
-            }
-
-            Viewer.Charge(storeIncident);
-            MessageHelper.SendConfirmation(Viewer.username, "TKUtils.Immortality".Localize());
-
-            Find.LetterStack.ReceiveLetter(
-                "TKUtils.ImmortalityLetter.Title".Localize(),
-                "TKUtils.ImmortalityLetter.Description".LocalizeKeyed(Viewer.username),
-                LetterDefOf.NeutralEvent,
-                pawn
-            );
+            return false;
         }
+
+        return !_pawn!.health.hediffSet.HasHediff(Immortals.ImmortalHediffDef);
+    }
+
+    public override void Execute()
+    {
+        if (!Immortals.TryGrantImmortality(_pawn))
+        {
+            return;
+        }
+
+        Viewer.Charge(storeIncident);
+        MessageHelper.SendConfirmation(Viewer.username, "TKUtils.Immortality".Localize());
+
+        Find.LetterStack.ReceiveLetter(
+            "TKUtils.ImmortalityLetter.Title".Localize(),
+            "TKUtils.ImmortalityLetter.Description".LocalizeKeyed(Viewer.username),
+            LetterDefOf.NeutralEvent,
+            _pawn
+        );
     }
 }

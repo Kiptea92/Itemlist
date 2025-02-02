@@ -29,168 +29,164 @@ using TwitchToolkit.PawnQueue;
 using Verse;
 using Verse.Grammar;
 
-namespace SirRandoo.ToolkitUtils.Incidents
+namespace SirRandoo.ToolkitUtils.Incidents;
+
+public class RescueMe : IncidentVariablesBase
 {
-    [UsedImplicitly]
-    public class RescueMe : IncidentVariablesBase
+    private KidnapReport _report;
+
+    public override bool CanHappen(string msg, Viewer viewer)
     {
-        private KidnapReport report;
-
-        public override bool CanHappen(string msg, [NotNull] Viewer viewer)
+        if (!PurchaseHelper.TryGetPawn(viewer.username, out Pawn pawn, true))
         {
-            Pawn pawn = CommandBase.GetOrFindPawn(viewer.username, true);
-            bool? isKidnapped = pawn?.IsKidnapped();
-
-            if (!isKidnapped ?? false)
-            {
-                return false;
-            }
-
-            if (pawn?.IsBorrowedByAnyFaction() == true)
-            {
-                return false;
-            }
-
-            if (isKidnapped ?? false)
-            {
-                report = new KidnapReport { Viewer = viewer.username, PawnIds = new List<string> { pawn.ThingID } };
-                return true;
-            }
-
             try
             {
-                report = KidnapReport.KidnapReportFor(viewer.username);
+                _report = KidnapReport.KidnapReportFor(viewer.username);
             }
             catch (Exception e)
             {
-                LogHelper.Error(
-                    $"An error was thrown while trying to find {viewer.username}'s pawn in the kidnapped pawn list! Try again later.",
-                    e
-                );
+                TkUtils.Logger.Error($"An error was thrown while trying to find {viewer.username}'s pawn in the kidnapped pawn list! Try again later.", e);
+
                 return false;
             }
 
-            return !report?.PawnIds.NullOrEmpty() ?? false;
+            return !_report?.PawnIds.NullOrEmpty() ?? false;
         }
 
-        public override void Execute()
+        if (!pawn.IsKidnapped())
         {
-            QuestScriptDef scriptDef = DefDatabase<QuestScriptDef>.GetNamed("TKUtilsViewerRescue");
-            float threatPoints = StorytellerUtility.DefaultSiteThreatPointsNow();
-
-            var component = Current.Game.GetComponent<GameComponentPawns>();
-
-            if (component != null && component.pawnHistory.ContainsKey(Viewer.username.ToLower()))
-            {
-                component.pawnHistory.Remove(Viewer.username.ToLower());
-            }
-
-            ViewerRescue.QueuedViewers.Enqueue(report);
-            QuestUtility.SendLetterQuestAvailable(QuestUtility.GenerateQuestAndMakeAvailable(scriptDef, threatPoints));
-            Viewer.Charge(storeIncident);
+            return false;
         }
+
+        if (pawn.IsBorrowedByAnyFaction())
+        {
+            return false;
+        }
+
+        _report = new KidnapReport { Viewer = viewer.username, PawnIds = new List<string> { pawn.ThingID } };
+
+        return true;
     }
 
-    [UsedImplicitly(ImplicitUseKindFlags.InstantiatedNoFixedConstructorSignature, ImplicitUseTargetFlags.WithMembers)]
-    public class ViewerRescue : SitePartWorker
+    public override void Execute()
     {
-        internal static readonly ConcurrentQueue<KidnapReport> QueuedViewers = new ConcurrentQueue<KidnapReport>();
+        QuestScriptDef scriptDef = DefDatabase<QuestScriptDef>.GetNamed("TKUtilsViewerRescue");
+        float threatPoints = StorytellerUtility.DefaultSiteThreatPointsNow();
 
-        public override void PostDestroy([NotNull] SitePart sitePart)
+        var component = Current.Game.GetComponent<GameComponentPawns>();
+
+        if (component != null && component.pawnHistory.ContainsKey(Viewer.username.ToLower()))
         {
-            (sitePart.things.FirstOrFallback() as Pawn)?.mindState.JoinColonyBecauseRescuedBy(
-                sitePart.site.Map.PlayerPawnsForStoryteller.RandomElementWithFallback()
+            component.pawnHistory.Remove(Viewer.username.ToLower());
+        }
+
+        ViewerRescue.QueuedViewers.Enqueue(_report);
+        QuestUtility.SendLetterQuestAvailable(QuestUtility.GenerateQuestAndMakeAvailable(scriptDef, threatPoints));
+        Viewer.Charge(storeIncident);
+    }
+}
+
+[UsedImplicitly(ImplicitUseKindFlags.InstantiatedNoFixedConstructorSignature, ImplicitUseTargetFlags.WithMembers)]
+public class ViewerRescue : SitePartWorker
+{
+    internal static readonly ConcurrentQueue<KidnapReport> QueuedViewers = new ConcurrentQueue<KidnapReport>();
+
+    public override void PostDestroy(SitePart sitePart)
+    {
+        if (!(sitePart.things.FirstOrFallback() is Pawn prisoner))
+        {
+            return;
+        }
+
+        Pawn rescuer = sitePart.site.Map?.PlayerPawnsForStoryteller.RandomElementWithFallback();
+
+        if (rescuer == null)
+        {
+            TkUtils.Logger.Warn("Could not set prisoner's rescuer.");
+
+            return;
+        }
+
+        prisoner.mindState.JoinColonyBecauseRescuedBy(rescuer);
+    }
+
+    public override void Notify_GeneratedByQuestGen(
+        SitePart part,
+        Slate slate,
+        List<Rule> outExtraDescriptionRules,
+        Dictionary<string, string> outExtraDescriptionConstants
+    )
+    {
+        base.Notify_GeneratedByQuestGen(part, slate, outExtraDescriptionRules, outExtraDescriptionConstants);
+
+        Pawn pawn = null;
+        var isNew = false;
+
+        if (!QueuedViewers.TryDequeue(out KidnapReport report))
+        {
+            report = null;
+        }
+        else
+        {
+            pawn = CommandBase.GetOrFindPawn(report.Viewer, true);
+
+            if (!pawn.IsKidnapped())
+            {
+                pawn = null;
+            }
+        }
+
+        pawn ??= report?.GetMostRecentKidnapping();
+        pawn ??= report?.GetPawns().RandomElementWithFallback();
+
+        if (pawn == null)
+        {
+            pawn = PrisonerWillingToJoinQuestUtility.GeneratePrisoner(part.site.Tile, part.site.Faction);
+            isNew = true;
+        }
+
+        if (pawn != null)
+        {
+            pawn.SetFaction(part.site.Faction);
+            pawn.guest.SetGuestStatus(part.site.Faction, GuestStatus.Prisoner);
+            pawn.mindState.WillJoinColonyIfRescued = true;
+
+            if (pawn.Dead)
+            {
+                pawn.TryResurrect();
+            }
+
+            PawnApparelGenerator.GenerateStartingApparelFor(
+                pawn,
+                new PawnGenerationRequest(pawn.kindDef, pawn.Faction, PawnGenerationContext.NonPlayer, part.site.Tile, forceAddFreeWarmLayerIfNeeded: true)
             );
         }
 
-        public override void Notify_GeneratedByQuestGen(
-            [NotNull] SitePart part,
-            [NotNull] Slate slate,
-            [NotNull] List<Rule> outExtraDescriptionRules,
-            Dictionary<string, string> outExtraDescriptionConstants
-        )
+        part.things = new ThingOwner<Pawn>(part, true, isNew ? LookMode.Deep : LookMode.Reference);
+        part.things.TryAdd(pawn);
+
+        PawnRelationUtility.Notify_PawnsSeenByPlayer(Gen.YieldSingle(pawn), out string pawnRelationsInfo, true, false);
+
+        string output = pawnRelationsInfo.NullOrEmpty() ? "" : $"\n\n{"PawnHasRelationshipsWithColonists".Translate(pawn?.LabelShort, pawn)}\n\n{pawnRelationsInfo}";
+        slate.Set("prisoner", pawn);
+
+        outExtraDescriptionRules.Add(new Rule_String("prisonerFullRelationInfo", output));
+    }
+
+    public override string GetPostProcessedThreatLabel(Site site, SitePart sitePart)
+    {
+        string str = base.GetPostProcessedThreatLabel(site, sitePart);
+
+        if (sitePart.things is { Any: true })
         {
-            base.Notify_GeneratedByQuestGen(part, slate, outExtraDescriptionRules, outExtraDescriptionConstants);
-
-            Pawn pawn = null;
-            var isNew = false;
-            if (!QueuedViewers.TryDequeue(out KidnapReport report))
-            {
-                report = null;
-            }
-            else
-            {
-                pawn = CommandBase.GetOrFindPawn(report.Viewer, true);
-
-                if (!pawn.IsKidnapped())
-                {
-                    pawn = null;
-                }
-            }
-
-            pawn ??= report?.GetMostRecentKidnapping();
-            pawn ??= report?.GetPawns().RandomElementWithFallback();
-
-            if (pawn == null)
-            {
-                pawn = PrisonerWillingToJoinQuestUtility.GeneratePrisoner(part.site.Tile, part.site.Faction);
-                isNew = true;
-            }
-
-            if (pawn != null)
-            {
-                pawn.SetFaction(part.site.Faction);
-            #if RW12
-                pawn.guest.SetGuestStatus(part.site.Faction, true);
-            #else
-                pawn.guest.SetGuestStatus(part.site.Faction, GuestStatus.Prisoner);
-            #endif
-                pawn.mindState.WillJoinColonyIfRescued = true;
-                PawnApparelGenerator.GenerateStartingApparelFor(
-                    pawn,
-                    new PawnGenerationRequest(
-                        pawn.kindDef,
-                        pawn.Faction,
-                        PawnGenerationContext.NonPlayer,
-                        part.site.Tile,
-                        forceAddFreeWarmLayerIfNeeded: true
-                    )
-                );
-            }
-
-            part.things = new ThingOwner<Pawn>(part, true, isNew ? LookMode.Deep : LookMode.Reference);
-            part.things.TryAdd(pawn);
-
-            PawnRelationUtility.Notify_PawnsSeenByPlayer(
-                Gen.YieldSingle(pawn),
-                out string pawnRelationsInfo,
-                true,
-                false
-            );
-
-            string output = pawnRelationsInfo.NullOrEmpty()
-                ? ""
-                : $"\n\n{"PawnHasRelationshipsWithColonists".Translate(pawn?.LabelShort, pawn)}\n\n{pawnRelationsInfo}";
-            slate.Set("prisoner", pawn);
-
-            outExtraDescriptionRules.Add(new Rule_String("prisonerFullRelationInfo", output));
+            str = str + ": " + sitePart.things[0].LabelShortCap;
         }
 
-        public override string GetPostProcessedThreatLabel([NotNull] Site site, [NotNull] SitePart sitePart)
+        if (site.HasWorldObjectTimeout)
         {
-            string str = base.GetPostProcessedThreatLabel(site, sitePart);
-            if (sitePart.things is { Any: true })
-            {
-                str = str + ": " + sitePart.things[0].LabelShortCap;
-            }
-
-            if (site.HasWorldObjectTimeout)
-            {
-                str +=
-                    $" ({"DurationLeft".Translate((NamedArgument)site.WorldObjectTimeoutTicksLeft.ToStringTicksToPeriod())})";
-            }
-
-            return str;
+            str += $" ({"DurationLeft".Translate((NamedArgument)site.WorldObjectTimeoutTicksLeft.ToStringTicksToPeriod())})";
         }
+
+        return str;
     }
 }

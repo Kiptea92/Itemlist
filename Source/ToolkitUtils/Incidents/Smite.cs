@@ -18,44 +18,39 @@ using System.Linq;
 using JetBrains.Annotations;
 using RimWorld;
 using SirRandoo.ToolkitUtils.Helpers;
-using SirRandoo.ToolkitUtils.Models;
 using SirRandoo.ToolkitUtils.Utils;
 using ToolkitCore;
 using TwitchToolkit;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Incidents
+namespace SirRandoo.ToolkitUtils.Incidents;
+
+public class Smite : IncidentVariablesBase
 {
-    [UsedImplicitly]
-    public class Smite : IncidentVariablesBase
+    private Pawn _pawn;
+
+    public override bool CanHappen(string msg, Viewer viewer)
     {
-        private Pawn pawn;
-
-        public override bool CanHappen([NotNull] string msg, [NotNull] Viewer viewer)
+        if (!viewer.mod || !viewer.username.EqualsIgnoreCase(ToolkitCoreSettings.channel_username))
         {
-            UserData data = UserRegistry.GetData(viewer.username);
-
-            if (!(data is { IsModerator: true })
-                || !data.Username.EqualsIgnoreCase(ToolkitCoreSettings.channel_username))
-            {
-                return false;
-            }
-
-            string target = msg.Split(' ').Take(2).FirstOrDefault();
-
-            if (PurchaseHelper.TryGetPawn(target, out pawn))
-            {
-                return pawn?.Spawned == true && pawn?.Map != null;
-            }
-
-            MessageHelper.ReplyToUser(viewer.username, "TKUtils.PawnNotFound".LocalizeKeyed(target));
             return false;
         }
 
-        public override void Execute()
+        string? target = msg.Split(' ').Skip(2).FirstOrDefault();
+
+        if (PurchaseHelper.TryGetPawn(target, out _pawn))
         {
-            pawn.Map.weatherManager.eventHandler.AddEvent(new WeatherEvent_LightningStrike(pawn.Map, pawn.Position));
-            Viewer.Charge(storeIncident);
+            return _pawn?.Spawned == true && _pawn?.Map != null;
         }
+
+        MessageHelper.ReplyToUser(viewer.username, "TKUtils.PawnNotFound".LocalizeKeyed(target));
+
+        return false;
+    }
+
+    public override void Execute()
+    {
+        _pawn.Map.weatherManager.eventHandler.AddEvent(new WeatherEvent_LightningStrike(_pawn.Map, _pawn.Position));
+        Viewer.Charge(storeIncident);
     }
 }

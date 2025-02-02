@@ -14,33 +14,32 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using ToolkitUtils.UX;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.CommandSettings
+namespace SirRandoo.ToolkitUtils.CommandSettings;
+
+public class InstalledMods : ICommandSettings
 {
-    public class InstalledMods : ICommandSettings
+    public void Draw(Rect region)
     {
-        public void Draw(Rect region)
-        {
-            var listing = new Listing_Standard();
+        var listing = new Listing_Standard();
 
-            listing.Begin(region);
+        listing.Begin(region);
 
-            listing.CheckboxLabeled("TKUtils.DecorateUtils.Label".Localize(), ref TkSettings.DecorateMods);
-            listing.DrawDescription("TKUtils.DecorateUtils.Description".Localize());
+        listing.CheckboxLabeled("TKUtils.DecorateUtils.Label".TranslateSimple(), ref TkSettings.DecorateMods);
+        listing.DrawDescription("TKUtils.DecorateUtils.Description".TranslateSimple());
 
-            listing.CheckboxLabeled("TKUtils.VersionedModList.Label".Localize(), ref TkSettings.VersionedModList);
-            listing.DrawDescription("TKUtils.VersionedModList.Description".Localize());
+        listing.CheckboxLabeled("TKUtils.VersionedModList.Label".TranslateSimple(), ref TkSettings.VersionedModList);
+        listing.DrawDescription("TKUtils.VersionedModList.Description".TranslateSimple());
 
-            listing.End();
-        }
+        listing.End();
+    }
 
-        public void Save()
-        {
-            TkUtils.Instance.WriteSettings();
-        }
+    public void Save()
+    {
+        TkUtils.Instance.WriteSettings();
     }
 }

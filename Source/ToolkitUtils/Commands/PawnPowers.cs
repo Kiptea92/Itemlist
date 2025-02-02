@@ -14,33 +14,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Utils;
-using TwitchLib.Client.Models.Interfaces;
-using Verse;
 
 namespace SirRandoo.ToolkitUtils.Commands;
 
-[UsedImplicitly]
-public class PawnFix : CommandBase
+public class PawnPowers : CommandBase
 {
-    public override void RunCommand(ITwitchMessage twitchMessage)
-    {
-        if (!PurchaseHelper.TryGetPawn(twitchMessage.Username, out Pawn pawn))
-        {
-            twitchMessage.Reply("TKUtils.NoPawn".Localize());
-
-            return;
-        }
-
-        var name = pawn!.Name as NameTriple;
-
-        if (name?.Nick != twitchMessage.Username)
-        {
-            pawn.Name = new NameTriple(name?.First ?? "", twitchMessage.Username, name?.Last ?? "");
-        }
-
-        twitchMessage.Reply("TKUtils.PawnFix".Localize());
-    }
 }

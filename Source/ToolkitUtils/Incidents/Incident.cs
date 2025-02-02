@@ -18,72 +18,49 @@ using System;
 using System.Collections.Generic;
 using JetBrains.Annotations;
 using RimWorld;
+using SirRandoo.ToolkitUtils.Interfaces;
 using SirRandoo.ToolkitUtils.Models;
+using SirRandoo.ToolkitUtils.Models.IncidentDatas;
 using TwitchToolkit.Store;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Incidents
+namespace SirRandoo.ToolkitUtils.Incidents;
+
+[UsedImplicitly]
+public class Incident : IncidentHelper
 {
-    [UsedImplicitly]
-    public class Incident : IncidentHelper
+    private static readonly Dictionary<string, IIncidentData> Data = new Dictionary<string, IIncidentData>
     {
-        private static readonly Dictionary<string, IncidentData> Data;
-        private IncidentParms parms;
-        private IncidentWorker worker;
+        { "TraderCaravanArrival", new TraderCaravanIncidentData() }, { "OrbitalTraderArrival", new OrbitalTraderIncidentData() }
+    };
+    private IncidentParms _params;
+    private IncidentWorker _worker;
 
-        static Incident()
+    public override bool IsPossible()
+    {
+        if (!Data.TryGetValue(storeIncident.defName, out IIncidentData data))
         {
-            Data = new Dictionary<string, IncidentData>
-            {
-                {
-                    "TraderCaravanArrival",
-                    new IncidentData
-                    {
-                        Category = IncidentCategoryDefOf.Misc,
-                        WorkerClass = typeof(IncidentWorker_TraderCaravanArrival),
-                        ExtraSetup = (worker, parms, arg3) =>
-                            worker.def = RimWorld.IncidentDefOf.TraderCaravanArrival
-                    }
-                },
-                {
-                    "OrbitalTraderArrival",
-                    new IncidentData
-                    {
-                        Category = IncidentCategoryDefOf.Misc,
-                        WorkerClass = typeof(IncidentWorker_OrbitalTraderArrival),
-                        ExtraSetup = (worker, parms, arg3) =>
-                            worker.def = RimWorld.IncidentDefOf.OrbitalTraderArrival
-                    }
-                }
-            };
+            return false;
         }
 
-        public override bool IsPossible()
+        _worker = Activator.CreateInstance(data.WorkerClass) as IncidentWorker;
+        Map map = Find.RandomPlayerHomeMap;
+
+        if (map == null || _worker == null)
         {
-            if (!Data.TryGetValue(storeIncident.defName, out IncidentData data))
-            {
-                return false;
-            }
-
-            worker = Activator.CreateInstance(data.WorkerClass) as IncidentWorker;
-            Map map = Find.RandomPlayerHomeMap;
-
-            if (map == null)
-            {
-                return false;
-            }
-
-            parms = StorytellerUtility.DefaultParmsNow(data.Category, map);
-            parms.forced = true;
-
-            data.ExtraSetup?.Invoke(worker, parms, storeIncident);
-
-            return worker?.CanFireNow(parms) == true;
+            return false;
         }
 
-        public override void TryExecute()
-        {
-            worker.TryExecute(parms);
-        }
+        _params = StorytellerUtility.DefaultParmsNow(data.ResolveCategory(_worker, storeIncident), map);
+        _params.forced = true;
+
+        data.DoExtraSetup(_worker, _params, storeIncident);
+
+        return _worker.CanFireNow(_params);
+    }
+
+    public override void TryExecute()
+    {
+        _worker.TryExecute(_params);
     }
 }

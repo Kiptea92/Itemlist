@@ -25,275 +25,250 @@ using TwitchLib.Client.Models.Interfaces;
 using TwitchToolkit.Incidents;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Commands
+namespace SirRandoo.ToolkitUtils.Commands;
+
+[UsedImplicitly]
+public class Lookup : CommandBase
 {
-    [UsedImplicitly]
-    public class Lookup : CommandBase
+    public enum Category
     {
-        internal static readonly Dictionary<string, string> Index;
-        private ITwitchMessage msg;
+        Item,
+        Event,
+        Kind,
+        Disease,
+        Animal,
+        Skill,
+        Trait,
+        Mod
+    }
 
-        static Lookup()
+    internal static readonly Dictionary<string, Category> Index = new Dictionary<string, Category>
+    {
+        { "item", Category.Item },
+        { "items", Category.Item },
+        { "incident", Category.Event },
+        { "incidents", Category.Event },
+        { "event", Category.Event },
+        { "events", Category.Event },
+        { "pawn", Category.Kind },
+        { "pawns", Category.Kind },
+        { "race", Category.Kind },
+        { "races", Category.Kind },
+        { "kinds", Category.Kind },
+        { "kind", Category.Kind },
+        { "pawnkinds", Category.Kind },
+        { "disease", Category.Disease },
+        { "diseases", Category.Disease },
+        { "animal", Category.Animal },
+        { "animals", Category.Animal },
+        { "skill", Category.Skill },
+        { "skills", Category.Skill },
+        { "trait", Category.Trait },
+        { "traits", Category.Trait },
+        { "mods", Category.Mod },
+        { "mod", Category.Mod }
+    };
+
+    private ITwitchMessage _msg;
+
+    public override void RunCommand(ITwitchMessage twitchMessage)
+    {
+        _msg = twitchMessage;
+        string[] segments = CommandFilter.Parse(twitchMessage.Message).Skip(1).ToArray();
+        string? category = segments.FirstOrFallback("");
+        string? query = segments.Skip(1).FirstOrFallback("");
+
+        if (!Index.TryGetValue(category.ToLowerInvariant(), out Category c))
         {
-            Index = new Dictionary<string, string>
-            {
-                { "item", "items" },
-                { "items", "items" },
-                { "incident", "events" },
-                { "incidents", "events" },
-                { "event", "events" },
-                { "events", "events" },
-                { "pawn", "kinds" },
-                { "pawns", "kinds" },
-                { "race", "kinds" },
-                { "races", "kinds" },
-                { "kinds", "kinds" },
-                { "kind", "kinds" },
-                { "pawnkinds", "kinds" },
-                { "disease", "diseases" },
-                { "diseases", "diseases" },
-                { "animal", "animals" },
-                { "animals", "animals" },
-                { "skill", "skills" },
-                { "skills", "skills" },
-                { "trait", "traits" },
-                { "traits", "traits" }
-            };
+            query = category;
+            c = Category.Item;
         }
 
-        public override void RunCommand([NotNull] ITwitchMessage twitchMessage)
+        PerformLookup(c, query);
+    }
+
+    private void NotifyLookupComplete(string? query, IReadOnlyCollection<string> results)
+    {
+        if (results.Count <= 0)
         {
-            msg = twitchMessage;
-            string[] segments = CommandFilter.Parse(twitchMessage.Message).Skip(1).ToArray();
-            string category = segments.FirstOrFallback("");
-            string query = segments.Skip(1).FirstOrFallback("");
-
-            if (!Index.TryGetValue(category.ToLowerInvariant(), out string _))
-            {
-                query = category;
-                category = "items";
-            }
-
-            PerformLookup(category, query);
+            return;
         }
 
-        private void NotifyLookupComplete(string query, [NotNull] IReadOnlyCollection<string> results)
+        _msg.Reply("TKUtils.Lookup".LocalizeKeyed(query, results.Take(TkSettings.LookupLimit).SectionJoin()));
+    }
+
+    private void PerformAnimalLookup(string? query)
+    {
+        string[] results = Data.Items.Where(i => i.Thing.race.Animal)
+           .Where(i => i.Cost > 0)
+           .Where(
+                i =>
+                {
+                    if (i.DefName == null)
+                    {
+                        return false;
+                    }
+
+                    string? q = query.ToToolkit();
+
+                    return i.Name.ToToolkit().Contains(q) || i.DefName.ToToolkit().Contains(q);
+                }
+            )
+           .Select(i => i.Name.CapitalizeFirst())
+           .ToArray();
+
+        NotifyLookupComplete(query, results);
+    }
+
+    private void PerformDiseaseLookup(string? query)
+    {
+        string[] results = DefDatabase<IncidentDef>.AllDefs.Where(i => i.category == IncidentCategoryDefOf.DiseaseHuman)
+           .Where(
+                i =>
+                {
+                    string? q = query.ToToolkit();
+
+                    return i.label.ToToolkit().Contains(q) || i.defName.ToToolkit().Contains(q);
+                }
+            )
+           .Select(i => i.label.ToToolkit().CapitalizeFirst())
+           .ToArray();
+
+        NotifyLookupComplete(query, results);
+    }
+
+    private void PerformEventLookup(string? query)
+    {
+        string[] results = DefDatabase<StoreIncident>.AllDefs.Where(i => i.cost > 0)
+           .Where(
+                i =>
+                {
+                    string? q = query.ToToolkit();
+
+                    return i.abbreviation.ToToolkit().Contains(q) || i.defName.ToToolkit().Contains(q);
+                }
+            )
+           .Select(i => i.abbreviation.ToToolkit().CapitalizeFirst())
+           .ToArray();
+
+        NotifyLookupComplete(query, results);
+    }
+
+    private void PerformItemLookup(string? query)
+    {
+        string[] results = Data.Items.Where(i => i.Cost > 0)
+           .Where(
+                i =>
+                {
+                    if (i.DefName == null)
+                    {
+                        return false;
+                    }
+
+                    string? q = query.ToToolkit();
+
+                    return i.Name.ToToolkit().Contains(q) || i.DefName!.ToToolkit().Contains(q);
+                }
+            )
+           .Select(i => i.Name.ToToolkit().CapitalizeFirst())
+           .ToArray();
+
+        NotifyLookupComplete(query, results);
+    }
+
+    private void PerformLookup(Category category, string? query)
+    {
+        switch (category)
         {
-            if (results.Count <= 0)
-            {
+            case Category.Disease:
+                PerformDiseaseLookup(query);
+
                 return;
-            }
+            case Category.Skill:
+                PerformSkillLookup(query);
 
-            string formatted = results.Take(TkSettings.LookupLimit).SectionJoin();
-
-            msg.Reply("TKUtils.Lookup".LocalizeKeyed(query, formatted));
-        }
-
-        private void PerformAnimalLookup(string query)
-        {
-            string[] results = Data.Items.Where(i => i.Thing.race.Animal)
-               .Where(i => i.Cost > 0)
-               .Where(
-                    i =>
-                    {
-                        string label = i.Name.ToToolkit();
-                        string q = query.ToToolkit();
-
-                        if (label.Contains(q) || label.EqualsIgnoreCase(q))
-                        {
-                            return true;
-                        }
-
-                        return i.DefName?.ToToolkit().Contains(query.ToToolkit()) == true
-                               || i.DefName?.ToToolkit().EqualsIgnoreCase(query.ToToolkit()) == true;
-                    }
-                )
-               .Select(i => i.Name.CapitalizeFirst())
-               .ToArray();
-
-            NotifyLookupComplete(query, results);
-        }
-
-        private void PerformDiseaseLookup(string query)
-        {
-            string[] results = DefDatabase<IncidentDef>.AllDefs
-               .Where(i => i.category == IncidentCategoryDefOf.DiseaseHuman)
-               .Where(
-                    i =>
-                    {
-                        string label = i.LabelCap.RawText.ToToolkit();
-                        string q = query.ToToolkit();
-
-                        if (label.Contains(q) || label.EqualsIgnoreCase(q))
-                        {
-                            return true;
-                        }
-
-                        return i.defName.ToToolkit().Contains(query.ToToolkit())
-                               || i.defName.ToToolkit().EqualsIgnoreCase(query.ToToolkit());
-                    }
-                )
-               .Select(i => i.LabelCap.RawText.ToToolkit().CapitalizeFirst())
-               .ToArray();
-
-            NotifyLookupComplete(query, results);
-        }
-
-        private void PerformEventLookup(string query)
-        {
-            string[] results = DefDatabase<StoreIncident>.AllDefs.Where(i => i.cost > 0)
-               .Where(
-                    i =>
-                    {
-                        string label = i.abbreviation.ToToolkit();
-                        string q = query.ToToolkit();
-
-                        if (label.Contains(q) || label.EqualsIgnoreCase(q))
-                        {
-                            return true;
-                        }
-
-                        return i.defName.ToToolkit().Contains(query.ToToolkit())
-                               || i.defName.ToToolkit().EqualsIgnoreCase(query.ToToolkit());
-                    }
-                )
-               .Select(i => i.abbreviation.ToToolkit().CapitalizeFirst())
-               .ToArray();
-
-            NotifyLookupComplete(query, results);
-        }
-
-        private void PerformItemLookup(string query)
-        {
-            string[] results = Data.Items.Where(i => i.Cost > 0)
-               .Where(
-                    i =>
-                    {
-                        if (i.Name == null || i.DefName == null)
-                        {
-                            return false;
-                        }
-
-                        string label = i.Name.ToToolkit();
-                        string q = query.ToToolkit();
-
-                        if (label.Contains(q) || label.EqualsIgnoreCase(q))
-                        {
-                            return true;
-                        }
-
-                        return i.DefName?.ToToolkit().Contains(query.ToToolkit()) == true
-                               || i.DefName?.ToToolkit().EqualsIgnoreCase(query.ToToolkit()) == true;
-                    }
-                )
-               .Select(i => i.Name.ToToolkit().CapitalizeFirst())
-               .ToArray();
-
-            NotifyLookupComplete(query, results);
-        }
-
-        private void PerformLookup([NotNull] string category, string query)
-        {
-            if (!Index.TryGetValue(category.ToLowerInvariant(), out string result))
-            {
                 return;
-            }
+            case Category.Event:
+                PerformEventLookup(query);
 
-            switch (result)
-            {
-                case "diseases":
-                    PerformDiseaseLookup(query);
-                    return;
-                case "skills":
-                    PerformSkillLookup(query);
-                    return;
-                case "events":
-                    PerformEventLookup(query);
-                    return;
-                case "items":
-                    PerformItemLookup(query);
-                    return;
-                case "animals":
-                    PerformAnimalLookup(query);
-                    return;
-                case "traits":
-                    PerformTraitLookup(query);
-                    return;
-                case "kinds":
-                    PerformKindLookup(query);
-                    return;
-            }
+                return;
+            case Category.Item:
+                PerformItemLookup(query);
+
+                return;
+            case Category.Animal:
+                PerformAnimalLookup(query);
+
+                return;
+            case Category.Trait:
+                PerformTraitLookup(query);
+
+                return;
+            case Category.Kind:
+                PerformKindLookup(query);
+
+                return;
+            case Category.Mod:
+                PerformModLookup(query);
+
+                return;
         }
+    }
 
-        private void PerformKindLookup(string query)
-        {
-            string[] results = Data.PawnKinds.Where(i => i.Enabled)
-               .Where(
-                    i =>
-                    {
-                        string label = i.Name.ToToolkit();
-                        string q = query.ToToolkit();
+    private void PerformModLookup(string? query)
+    {
+        string[] results = Data.Mods.Where(m => m.Name.ToToolkit().Contains(query.ToToolkit())).Select(m => m.Name).ToArray();
 
-                        if (label.Contains(q) || label.EqualsIgnoreCase(q))
-                        {
-                            return true;
-                        }
+        NotifyLookupComplete(query, results);
+    }
 
-                        return i.DefName.ToToolkit().Contains(query.ToToolkit())
-                               || i.DefName.ToToolkit().EqualsIgnoreCase(query.ToToolkit());
-                    }
-                )
-               .Select(i => i.Name.ToToolkit().CapitalizeFirst())
-               .ToArray();
+    private void PerformKindLookup(string? query)
+    {
+        string[] results = Data.PawnKinds.Where(i => i.Enabled)
+           .Where(
+                i =>
+                {
+                    string? q = query.ToToolkit();
 
-            NotifyLookupComplete(query, results);
-        }
+                    return i.Name.ToToolkit().Contains(q) || i.DefName.ToToolkit().Contains(q);
+                }
+            )
+           .Select(i => i.Name.ToToolkit().CapitalizeFirst())
+           .ToArray();
 
-        private void PerformSkillLookup(string query)
-        {
-            string[] results = DefDatabase<SkillDef>.AllDefs.Where(
-                    i =>
-                    {
-                        string label = i.LabelCap.RawText.ToToolkit();
-                        string q = query.ToToolkit();
+        NotifyLookupComplete(query, results);
+    }
 
-                        if (label.Contains(q) || label.EqualsIgnoreCase(q))
-                        {
-                            return true;
-                        }
+    private void PerformSkillLookup(string? query)
+    {
+        string[] results = DefDatabase<SkillDef>.AllDefs.Where(
+                i =>
+                {
+                    string? q = query.ToToolkit();
 
-                        return i.defName.ToToolkit().Contains(query.ToToolkit())
-                               || i.defName.ToToolkit().EqualsIgnoreCase(query.ToToolkit());
-                    }
-                )
-               .Select(i => i.defName.ToLower().CapitalizeFirst())
-               .ToArray();
+                    return i.label.ToToolkit().Contains(q) || i.defName.ToToolkit().Contains(q);
+                }
+            )
+           .Select(i => i.defName.ToLower().CapitalizeFirst())
+           .ToArray();
 
-            NotifyLookupComplete(query, results);
-        }
+        NotifyLookupComplete(query, results);
+    }
 
-        private void PerformTraitLookup(string query)
-        {
-            string[] results = Data.Traits.Where(t => t.CanAdd || t.CanRemove)
-               .Where(
-                    i =>
-                    {
-                        string label = i.Name.ToToolkit();
-                        string q = query.ToToolkit();
+    private void PerformTraitLookup(string? query)
+    {
+        string[] results = Data.Traits.Where(t => t.CanAdd || t.CanRemove)
+           .Where(
+                i =>
+                {
+                    string? q = query.ToToolkit();
 
-                        if (label.Contains(q) || label.EqualsIgnoreCase(q))
-                        {
-                            return true;
-                        }
+                    return i.Name.ToToolkit().Contains(q) || i.DefName.ToToolkit().Contains(q);
+                }
+            )
+           .Select(i => i.Name.ToToolkit().CapitalizeFirst())
+           .ToArray();
 
-                        return i.DefName.ToToolkit().Contains(query.ToToolkit())
-                               || i.DefName.ToToolkit().EqualsIgnoreCase(query.ToToolkit());
-                    }
-                )
-               .Select(i => i.Name.ToToolkit().CapitalizeFirst())
-               .ToArray();
-
-            NotifyLookupComplete(query, results);
-        }
+        NotifyLookupComplete(query, results);
     }
 }

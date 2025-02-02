@@ -24,38 +24,38 @@ using Verse;
 
 #pragma warning disable 618
 
-namespace SirRandoo.ToolkitUtils.Incidents
+namespace SirRandoo.ToolkitUtils.Incidents;
+
+[UsedImplicitly]
+public class ReviveRandom : IncidentHelper
 {
-    [UsedImplicitly]
-    public class ReviveRandom : IncidentHelper
+    private Pawn _pawn;
+
+    public override bool IsPossible()
     {
-        private Pawn pawn;
+        _pawn = Find.ColonistBar.GetColonistsInOrder()
+           .Where(p => p.Dead && p.SpawnedOrAnyParentSpawned && !PawnTracker.pawnsToRevive.Contains(p))
+           .RandomElementWithFallback();
 
-        public override bool IsPossible()
+        if (_pawn == null)
         {
-            pawn = Find.ColonistBar.GetColonistsInOrder()
-               .Where(p => p.Dead && p.SpawnedOrAnyParentSpawned && !PawnTracker.pawnsToRevive.Contains(p))
-               .RandomElementWithFallback();
-
-            if (pawn == null)
-            {
-                return false;
-            }
-
-            PawnTracker.pawnsToRevive.Add(pawn);
-            return true;
+            return false;
         }
 
-        public override void TryExecute()
-        {
-            pawn.TryResurrect();
+        PawnTracker.pawnsToRevive.Add(_pawn);
 
-            Find.LetterStack.ReceiveLetter(
-                "TKUtils.RevivalLetter.Title".Localize(),
-                "TKUtils.RevivalLetter.Description".LocalizeKeyed((pawn.LabelShort ?? pawn.Label).CapitalizeFirst()),
-                LetterDefOf.PositiveEvent,
-                pawn
-            );
-        }
+        return true;
+    }
+
+    public override void TryExecute()
+    {
+        _pawn.TryResurrect();
+
+        Find.LetterStack.ReceiveLetter(
+            "TKUtils.RevivalLetter.Title".Localize(),
+            "TKUtils.RevivalLetter.Description".LocalizeKeyed((_pawn.LabelShort ?? _pawn.Label).CapitalizeFirst()),
+            LetterDefOf.PositiveEvent,
+            _pawn
+        );
     }
 }

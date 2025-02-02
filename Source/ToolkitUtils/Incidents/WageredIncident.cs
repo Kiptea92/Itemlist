@@ -17,257 +17,96 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using JetBrains.Annotations;
 using RimWorld;
 using SirRandoo.ToolkitUtils.Helpers;
+using SirRandoo.ToolkitUtils.Interfaces;
 using SirRandoo.ToolkitUtils.Models;
+using SirRandoo.ToolkitUtils.Models.IncidentDatas;
 using SirRandoo.ToolkitUtils.Utils;
-using SirRandoo.ToolkitUtils.Workers;
 using ToolkitCore.Utilities;
 using TwitchToolkit;
 using TwitchToolkit.IncidentHelpers;
-using TwitchToolkit.Incidents;
 using Verse;
-using IncidentWorker_RaidEnemy = RimWorld.IncidentWorker_RaidEnemy;
 
-namespace SirRandoo.ToolkitUtils.Incidents
+namespace SirRandoo.ToolkitUtils.Incidents;
+
+public class WageredIncident : IncidentVariablesBase
 {
-    [UsedImplicitly]
-    public class WageredIncident : IncidentVariablesBase
+    private static readonly Dictionary<string, IWageredIncidentData> Data = new Dictionary<string, IWageredIncidentData>
     {
-        private static readonly Dictionary<string, IncidentData> Data;
-        private static readonly List<string> Predators;
-        private IncidentParms parms;
-        private int wager;
-        private IncidentWorker worker;
+        { "Raid", new RaidIncidentData() },
+        { "DropRaid", new DropRaidIncidentData() },
+        { "SapperRaid", new SapperRaidIncidentData() },
+        { "SiegeRaid", new SiegeRaidIncidentData() },
+        { "MechanoidRaid", new MechanoidRaidIncidentData() },
+        { "Infestation", new InfestationIncidentData() },
+        { "ManhunterPack", new ManhunterPackIncidentData() },
+        { "Predators", new PredatorsIncidentData() },
+        { "RandomDisease", new RandomDiseaseIncidentData() }
+    };
+    private IWageredIncidentData _data;
+    private IncidentParms _params;
+    private int _wager;
+    private IncidentWorker _worker;
 
-        static WageredIncident()
+    public override bool CanHappen(string msg, Viewer viewer)
+    {
+        if (!Data.TryGetValue(storeIncident.defName, out _data))
         {
-            Predators = new List<string>
-            {
-                "Bear_Grizzly",
-                "Bear_Polar",
-                "Rhinoceros",
-                "Elephant",
-                "Megasloth",
-                "Thrumbo"
-            };
-            Data = new Dictionary<string, IncidentData>
-            {
-                {
-                    "Raid",
-                    new IncidentData
-                    {
-                        Category = IncidentCategoryDefOf.ThreatSmall,
-                        WorkerClass = typeof(IncidentWorker_RaidEnemy),
-                        ExtraSetup = PrepareRaid
-                    }
-                },
-                {
-                    "DropRaid",
-                    new IncidentData
-                    {
-                        Category = IncidentCategoryDefOf.ThreatSmall,
-                        WorkerClass = typeof(IncidentWorker_RaidEnemy),
-                        ExtraSetup = PrepareRaid
-                    }
-                },
-                {
-                    "SapperRaid",
-                    new IncidentData
-                    {
-                        Category = IncidentCategoryDefOf.ThreatSmall,
-                        WorkerClass = typeof(IncidentWorker_RaidEnemy),
-                        ExtraSetup = PrepareRaid
-                    }
-                },
-                {
-                    "SiegeRaid",
-                    new IncidentData
-                    {
-                        Category = IncidentCategoryDefOf.ThreatSmall,
-                        WorkerClass = typeof(IncidentWorker_RaidEnemy),
-                        ExtraSetup = PrepareRaid
-                    }
-                },
-                {
-                    "MechanoidRaid",
-                    new IncidentData
-                    {
-                        Category = IncidentCategoryDefOf.ThreatSmall,
-                        WorkerClass = typeof(IncidentWorker_RaidEnemy),
-                        ExtraSetup = PrepareRaid
-                    }
-                },
-                {
-                    "Infestation",
-                    new IncidentData
-                    {
-                        Category = IncidentCategoryDefOf.ThreatBig,
-                        WorkerClass = typeof(IncidentWorker_Infestation),
-                        ExtraSetup = (worker, parms, arg3) => worker.def = IncidentDef.Named("Infestation")
-                    }
-                },
-                {
-                    "ManhunterPack",
-                    new IncidentData
-                    {
-                        Category = IncidentCategoryDefOf.ThreatSmall,
-                        WorkerClass = typeof(IncidentWorker_ManhunterPack),
-                        ExtraSetup = (worker, parms, arg3) => worker.def = RimWorld.IncidentDefOf.RaidEnemy
-                    }
-                },
-                {
-                    "Predators",
-                    new IncidentData
-                    {
-                        Category = IncidentCategoryDefOf.ThreatSmall,
-                        WorkerClass = typeof(AnimalSpawnWorker),
-                        ExtraSetup = PreparePredators
-                    }
-                },
-                {
-                    "RandomDisease",
-                    new IncidentData
-                    {
-                        CategoryResolver = GetDiseaseCategory, WorkerClass = typeof(IncidentWorker_DiseaseHuman)
-                    }
-                }
-            };
+            return false;
         }
 
-        private static IncidentCategoryDef GetDiseaseCategory([NotNull] IncidentWorker worker, StoreIncident incident)
+        if (!_data.UseStoryteller)
         {
-            IncidentDef disease = DefDatabase<IncidentDef>.AllDefs
-               .Where(i => i.workerClass.IsAssignableFrom(typeof(IncidentWorker_DiseaseHuman)))
-               .RandomElement();
-
-            worker.def = disease;
-            return disease.category;
-        }
-
-        private static void PreparePredators(IncidentWorker worker, IncidentParms parms, StoreIncident incident)
-        {
-            if (!(worker is AnimalSpawnWorker spawnWorker))
-            {
-                return;
-            }
-
-            if (!Predators.TryRandomElement(out string predator))
-            {
-                predator = "Thrumbo";
-            }
-
-            ThingDef thing = ThingDef.Named(predator);
-            var power = 0.0f;
-
-            if (thing?.race != null)
-            {
-                power += thing.tools.Sum(t => t.power);
-                power /= thing.tools.Count;
-            }
-
-            spawnWorker.Quantity = power > 18f ? 2 : 3;
-            spawnWorker.SpawnManhunter = true;
-            spawnWorker.AnimalDef = PawnKindDef.Named(predator);
-            spawnWorker.def = IncidentDef.Named("HerdMigration");
-            spawnWorker.Label = "TwitchStoriesLetterLabelPredators".Localize();
-            spawnWorker.Text = "ManhunterPackArrived".Localize(spawnWorker.AnimalDef.GetLabelPlural());
-        }
-
-        private static void PrepareRaid(
-            [NotNull] IncidentWorker worker,
-            [NotNull] IncidentParms parms,
-            [NotNull] StoreIncident incident
-        )
-        {
-            parms.raidStrategy = RaidStrategyDefOf.ImmediateAttack;
-            worker.def = RimWorld.IncidentDefOf.RaidEnemy;
-            parms.faction = Find.FactionManager.RandomEnemyFaction(
-                minTechLevel: TechLevel.Industrial,
-                allowNonHumanlike: false
-            );
-            parms.forced = true;
-
-            switch (incident.defName)
-            {
-                case "Raid":
-                    parms.raidArrivalMode = PawnsArrivalModeDefOf.EdgeWalkIn;
-                    break;
-                case "DropRaid":
-                    parms.raidArrivalMode = PawnsArrivalModeDefOf.CenterDrop;
-                    break;
-                case "SapperRaid":
-                    parms.raidArrivalMode = PawnsArrivalModeDefOf.EdgeWalkIn;
-                    parms.raidStrategy = DefDatabase<RaidStrategyDef>.GetNamed("ImmediateAttackSappers");
-                    break;
-                case "MechanoidRaid":
-                    parms.raidArrivalMode = PawnsArrivalModeDefOf.RandomDrop;
-                    parms.faction = Faction.OfMechanoids;
-                    break;
-                case "SiegeRaid":
-                    parms.raidStrategy = DefDatabase<RaidStrategyDef>.GetNamed("Siege");
-                    parms.raidArrivalMode = PawnsArrivalModeDefOf.EdgeWalkIn;
-                    break;
-            }
-        }
-
-        public override bool CanHappen(string msg, Viewer viewer)
-        {
-            if (!Data.TryGetValue(storeIncident.defName, out IncidentData data))
-            {
-                return false;
-            }
-
             string rawPoints = CommandFilter.Parse(msg).Skip(2).FirstOrDefault();
 
-            if (rawPoints.NullOrEmpty()
-                || !VariablesHelpers.PointsWagerIsValid(rawPoints, viewer, ref wager, ref storeIncident))
+            if (rawPoints.NullOrEmpty() || !VariablesHelpers.PointsWagerIsValid(rawPoints, viewer, ref _wager, ref storeIncident))
             {
                 return false;
             }
-
-            Map map = Find.RandomPlayerHomeMap;
-            worker = Activator.CreateInstance(data.WorkerClass) as IncidentWorker;
-
-            if (worker == null || map == null)
-            {
-                return false;
-            }
-
-            parms = StorytellerUtility.DefaultParmsNow(
-                data.CategoryResolver != null ? data.CategoryResolver.Invoke(worker, storeIncident) : data.Category,
-                map
-            );
-
-            parms.points = IncidentHelper_PointsHelper.RollProportionalGamePoints(storeIncident, wager, parms.points);
-            parms.forced = true;
-            data.ExtraSetup?.Invoke(worker, parms, storeIncident);
-
-            return worker.CanFireNow(parms);
         }
 
-        public override void Execute()
+        Map map = Find.RandomPlayerHomeMap;
+        _worker = Activator.CreateInstance(_data.WorkerClass) as IncidentWorker;
+
+        if (_worker == null || map == null)
         {
-            if (worker.TryExecute(parms))
-            {
-                Viewer.TakeViewerCoins(wager);
-                Viewer.CalculateNewKarma(storeIncident.karmaType, wager);
-                MessageHelper.ReplyToUser(
-                    Viewer.username,
-                    "TKUtils.Wagered.Complete".LocalizeKeyed(
-                        storeIncident.label ?? storeIncident.abbreviation,
-                        wager,
-                        parms.points
-                    )
-                );
-                return;
-            }
+            return false;
+        }
+
+        _params = StorytellerUtility.DefaultParmsNow(_data.ResolveCategory(_worker, storeIncident), map);
+
+        if (!_data.UseStoryteller)
+        {
+            _params.points = IncidentHelper_PointsHelper.RollProportionalGamePoints(storeIncident, _wager, _params.points);
+        }
+
+        _params.forced = true;
+        _data.DoExtraSetup(_worker, _params, storeIncident);
+
+        return _worker.CanFireNow(_params);
+    }
+
+    public override void Execute()
+    {
+        if (_worker.TryExecute(_params))
+        {
+            Viewer.TakeViewerCoins(_data.UseStoryteller ? storeIncident.cost : _wager);
+            Viewer.CalculateNewKarma(storeIncident.karmaType, _wager);
+
+            string? name = storeIncident.label ?? storeIncident.abbreviation;
+            var points = _params.points.ToString("N3");
 
             MessageHelper.ReplyToUser(
                 Viewer.username,
-                "TKUtils.FailedParms".LocalizeKeyed(storeIncident.label ?? storeIncident.defName)
+                _data.UseStoryteller
+                    ? "TKUtils.Wagered.Storyteller".LocalizeKeyed(name, points)
+                    : "TKUtils.Wagered.Complete".LocalizeKeyed(name, _wager.ToString("N0"), points)
             );
+
+            return;
         }
+
+        MessageHelper.ReplyToUser(Viewer.username, "TKUtils.FailedParms".LocalizeKeyed(storeIncident.label ?? storeIncident.abbreviation));
     }
 }

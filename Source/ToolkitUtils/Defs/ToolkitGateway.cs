@@ -16,126 +16,121 @@
 
 using System.Collections.Generic;
 using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils
+namespace SirRandoo.ToolkitUtils;
+
+[UsedImplicitly]
+public class ToolkitGateway : Building
 {
-    [UsedImplicitly]
-    public class ToolkitGateway : Building
+    private bool _forAnimals = true;
+    private bool _forItems = true;
+    private bool _forPawns = true;
+    private List<Gizmo> _gizmos;
+
+    public bool ForItems => _forItems;
+    public bool ForPawns => _forPawns;
+    public bool ForAnimals => _forAnimals;
+
+    public override void ExposeData()
     {
-        private bool forAnimals = true;
-        private bool forItems = true;
-        private bool forPawns = true;
-        private List<Gizmo> gizmos;
+        base.ExposeData();
 
-        public bool ForItems => forItems;
-        public bool ForPawns => forPawns;
-        public bool ForAnimals => forAnimals;
+        Scribe_Values.Look(ref _forItems, "forItems", true);
+        Scribe_Values.Look(ref _forPawns, "forPawns", true);
+        Scribe_Values.Look(ref _forAnimals, "forAnimals", true);
+    }
 
-        public override void ExposeData()
+    public override IEnumerable<Gizmo> GetGizmos()
+    {
+        if (!_gizmos.NullOrEmpty())
         {
-            base.ExposeData();
-
-            Scribe_Values.Look(ref forItems, "forItems", true);
-            Scribe_Values.Look(ref forPawns, "forPawns", true);
-            Scribe_Values.Look(ref forAnimals, "forAnimals", true);
+            return _gizmos;
         }
 
-        public override IEnumerable<Gizmo> GetGizmos()
-        {
-            if (!gizmos.NullOrEmpty())
+        _gizmos ??= new List<Gizmo>();
+
+        _gizmos.Add(
+            new Command_Action
             {
-                return gizmos;
+                action = () => Destroy(),
+                icon = Textures.CloseGateway,
+                defaultLabel = "TKUtils.CloseGatewayGizmo.Label".TranslateSimple(),
+                defaultDesc = "TKUtils.CloseGatewayGizmo.Description".TranslateSimple()
             }
+        );
 
-            gizmos ??= new List<Gizmo>();
-            gizmos.Add(
-                new Command_Action
-                {
-                    action = () => Destroy(),
-                    icon = Textures.CloseGateway,
-                    defaultLabel = "TKUtils.CloseGatewayGizmo.Label".Localize(),
-                    defaultDesc = "TKUtils.CloseGatewayGizmo.Description".Localize()
-                }
-            );
-
-            gizmos.Add(
-                new Command_Toggle
-                {
-                    icon = Textures.Snowman,
-                    defaultLabel = "TKUtils.TogglePawnGatewayGizmo.Label".Localize(),
-                    defaultDesc = "TKUtils.TogglePawnGatewayGizmo.Description".Localize(),
-                    isActive = () => forPawns,
-                    toggleAction = () => forPawns = !forPawns
-                }
-            );
-
-            gizmos.Add(
-                new Command_Toggle
-                {
-                    icon = Textures.HumanMeat,
-                    defaultLabel = "TKUtils.ToggleItemGatewayGizmo.Label".Localize(),
-                    defaultDesc = "TKUtils.ToggleItemGatewayGizmo.Description".Localize(),
-                    isActive = () => forItems,
-                    toggleAction = () => forItems = !forItems
-                }
-            );
-
-            gizmos.Add(
-                new Command_Toggle
-                {
-                    icon = DefDatabase<ThingDef>.GetNamed("Rat").uiIcon,
-                    defaultLabel = "TKUtils.ToggleAnimalGatewayGizmo.Label".Localize(),
-                    defaultDesc = "TKUtils.ToggleAnimalGatewayGizmo.Description".Localize(),
-                    isActive = () => forAnimals,
-                    toggleAction = () => forAnimals = !forAnimals
-                }
-            );
-
-            foreach (Gizmo gizmo in base.GetGizmos())
+        _gizmos.Add(
+            new Command_Toggle
             {
-                gizmos.Add(gizmo);
+                icon = Textures.Snowman,
+                defaultLabel = "TKUtils.TogglePawnGatewayGizmo.Label".TranslateSimple(),
+                defaultDesc = "TKUtils.TogglePawnGatewayGizmo.Description".TranslateSimple(),
+                isActive = () => _forPawns,
+                toggleAction = () => _forPawns = !_forPawns
             }
+        );
 
-            return gizmos;
-        }
-
-        public override void TickLong()
-        {
-            if (!TkSettings.EasterEggs)
+        _gizmos.Add(
+            new Command_Toggle
             {
-                return;
+                icon = Textures.HumanMeat,
+                defaultLabel = "TKUtils.ToggleItemGatewayGizmo.Label".TranslateSimple(),
+                defaultDesc = "TKUtils.ToggleItemGatewayGizmo.Description".TranslateSimple(),
+                isActive = () => _forItems,
+                toggleAction = () => _forItems = !_forItems
             }
+        );
 
-            bool shouldSpawnRat = Rand.Chance(0.01f);
-            bool shouldSpawnBoomRat = Rand.Chance(0.1f);
-
-            if (shouldSpawnRat)
+        _gizmos.Add(
+            new Command_Toggle
             {
-                GenSpawn.Spawn(
-                    PawnGenerator.GeneratePawn(shouldSpawnBoomRat ? PawnKindDefOf.Boomrat : PawnKindDefOf.Rat),
-                    Position,
-                    Map
-                );
+                icon = DefDatabase<ThingDef>.GetNamed("Rat").uiIcon,
+                defaultLabel = "TKUtils.ToggleAnimalGatewayGizmo.Label".TranslateSimple(),
+                defaultDesc = "TKUtils.ToggleAnimalGatewayGizmo.Description".TranslateSimple(),
+                isActive = () => _forAnimals,
+                toggleAction = () => _forAnimals = !_forAnimals
             }
+        );
+
+        foreach (Gizmo gizmo in base.GetGizmos())
+        {
+            _gizmos.Add(gizmo);
         }
 
-        public override void Destroy(DestroyMode mode = DestroyMode.Vanish)
+        return _gizmos;
+    }
+
+    public override void TickLong()
+    {
+        if (!TkSettings.EasterEggs)
         {
-            Current.Game.GetComponent<Coordinator>()?.RemovePortal(this);
-            base.Destroy(mode);
+            return;
         }
 
-        public override void SpawnSetup(Map map, bool respawningAfterLoad)
-        {
-            base.SpawnSetup(map, respawningAfterLoad);
-            Current.Game.GetComponent<Coordinator>()?.RegisterPortal(this);
-        }
+        bool shouldSpawnRat = Rand.Chance(0.01f);
+        bool shouldSpawnBoomRat = Rand.Chance(0.1f);
 
-        public override void PreApplyDamage(ref DamageInfo dinfo, out bool absorbed)
+        if (shouldSpawnRat)
         {
-            absorbed = true;
+            GenSpawn.Spawn(PawnGenerator.GeneratePawn(shouldSpawnBoomRat ? PawnKindDefOf.Boomrat : PawnKindDefOf.Rat), Position, Map);
         }
+    }
+
+    public override void Destroy(DestroyMode mode = DestroyMode.Vanish)
+    {
+        Current.Game.GetComponent<Coordinator>()?.RemovePortal(this);
+        base.Destroy(mode);
+    }
+
+    public override void SpawnSetup(Map map, bool respawningAfterLoad)
+    {
+        base.SpawnSetup(map, respawningAfterLoad);
+        Current.Game.GetComponent<Coordinator>()?.RegisterPortal(this);
+    }
+
+    public override void PreApplyDamage(ref DamageInfo dinfo, out bool absorbed)
+    {
+        absorbed = true;
     }
 }

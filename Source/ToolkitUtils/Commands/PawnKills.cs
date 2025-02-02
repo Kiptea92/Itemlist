@@ -21,48 +21,37 @@ using SirRandoo.ToolkitUtils.Utils;
 using TwitchLib.Client.Models.Interfaces;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Commands
+namespace SirRandoo.ToolkitUtils.Commands;
+
+[UsedImplicitly]
+public class PawnKills : CommandBase
 {
-    [UsedImplicitly]
-    public class PawnKills : CommandBase
+    public override void RunCommand(ITwitchMessage twitchMessage)
     {
-        public override void RunCommand([NotNull] ITwitchMessage msg)
+        if (!PurchaseHelper.TryGetPawn(twitchMessage.Username, out Pawn pawn))
         {
-            if (!PurchaseHelper.TryGetPawn(msg.Username, out Pawn pawn))
-            {
-                msg.Reply("TKUtils.NoPawn".Localize());
-                return;
-            }
+            twitchMessage.Reply("TKUtils.NoPawn".Localize());
 
-            int totalKills = pawn!.records.GetAsInt(RecordDefOf.Kills);
-            int animalKills = pawn.records.GetAsInt(RecordDefOf.KillsAnimals);
-            int humanLikeKills = pawn.records.GetAsInt(RecordDefOf.KillsHumanlikes);
-            int mechanoidKills = pawn.records.GetAsInt(RecordDefOf.KillsMechanoids);
-
-            string container = ResponseHelper.JoinPair(
-                "TKUtils.PawnKills.Total".Localize().CapitalizeFirst(),
-                totalKills.ToString("N0")
-            );
-
-            container += ResponseHelper.OuterGroupSeparator;
-            container += string.Join(
-                ", ",
-                ResponseHelper.JoinPair(
-                    "TKUtils.PawnKills.Humanlike".Localize().CapitalizeFirst(),
-                    humanLikeKills.ToString("N0")
-                ),
-                ResponseHelper.JoinPair(
-                    "TKUtils.PawnKills.Animals".Localize().CapitalizeFirst(),
-                    animalKills.ToString("N0")
-                ),
-                ResponseHelper.JoinPair(
-                    "TKUtils.PawnKills.Mechanoids".Localize().CapitalizeFirst(),
-                    mechanoidKills.ToString("N0")
-                )
-            );
-
-
-            msg.Reply(container);
+            return;
         }
+
+        int totalKills = pawn!.records.GetAsInt(RecordDefOf.Kills);
+        int animalKills = pawn.records.GetAsInt(RecordDefOf.KillsAnimals);
+        int humanLikeKills = pawn.records.GetAsInt(RecordDefOf.KillsHumanlikes);
+        int mechanoidKills = pawn.records.GetAsInt(RecordDefOf.KillsMechanoids);
+
+        string? container = ResponseHelper.JoinPair("TKUtils.PawnKills.Total".Localize().CapitalizeFirst(), totalKills.ToString("N0"));
+
+        container += ResponseHelper.OuterGroupSeparator;
+
+        container += string.Join(
+            ", ",
+            ResponseHelper.JoinPair("TKUtils.PawnKills.Humanlike".Localize().CapitalizeFirst(), humanLikeKills.ToString("N0")),
+            ResponseHelper.JoinPair("TKUtils.PawnKills.Animals".Localize().CapitalizeFirst(), animalKills.ToString("N0")),
+            ResponseHelper.JoinPair("TKUtils.PawnKills.Mechanoids".Localize().CapitalizeFirst(), mechanoidKills.ToString("N0"))
+        );
+
+
+        twitchMessage.Reply(container);
     }
 }

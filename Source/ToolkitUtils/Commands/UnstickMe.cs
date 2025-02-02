@@ -21,24 +21,23 @@ using TwitchLib.Client.Models.Interfaces;
 using TwitchToolkit.Store;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Commands
+namespace SirRandoo.ToolkitUtils.Commands;
+
+[UsedImplicitly]
+public class UnstickMe : CommandBase
 {
-    [UsedImplicitly]
-    public class UnstickMe : CommandBase
+    public override void RunCommand(ITwitchMessage twitchMessage)
     {
-        public override void RunCommand([NotNull] ITwitchMessage msg)
+        if (!Purchase_Handler.viewerNamesDoingVariableCommands.Contains(twitchMessage.Username))
         {
-            if (!Purchase_Handler.viewerNamesDoingVariableCommands.Contains(msg.Username))
-            {
-                return;
-            }
+            return;
+        }
 
-            Current.Game?.GetComponent<Coordinator>()?.NotifySolventRequested(msg.Username.ToLower());
+        Current.Game?.GetComponent<Coordinator>()?.NotifySolventRequested(twitchMessage.Username.ToLower());
 
-            if (Find.TickManager?.Paused != false)
-            {
-                msg.Reply("TKUtils.UnstickMe.Queued".Localize());
-            }
+        if (Find.TickManager?.Paused != false)
+        {
+            twitchMessage.Reply("TKUtils.UnstickMe.Queued".Localize());
         }
     }
 }

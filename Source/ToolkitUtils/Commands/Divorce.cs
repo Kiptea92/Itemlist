@@ -1,5 +1,5 @@
 ﻿// ToolkitUtils
-// Copyright (C) 2021  SirRandoo
+// Copyright (C) 2022  SirRandoo
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published
@@ -14,33 +14,55 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+using System.Linq;
 using JetBrains.Annotations;
+using RimWorld;
 using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Utils;
+using SirRandoo.ToolkitUtils.Workers;
+using ToolkitCore.Utilities;
 using TwitchLib.Client.Models.Interfaces;
+using TwitchToolkit;
 using Verse;
 
 namespace SirRandoo.ToolkitUtils.Commands;
 
-[UsedImplicitly]
-public class PawnFix : CommandBase
+public class Divorce : CommandBase
 {
+    /// <inheritdoc/>
     public override void RunCommand(ITwitchMessage twitchMessage)
     {
         if (!PurchaseHelper.TryGetPawn(twitchMessage.Username, out Pawn pawn))
         {
-            twitchMessage.Reply("TKUtils.NoPawn".Localize());
+            MessageHelper.ReplyToUser(twitchMessage.Username, "TKUtils.NoPawn".Localize());
 
             return;
         }
 
-        var name = pawn!.Name as NameTriple;
+        var worker = ArgWorker.CreateInstance(CommandFilter.Parse(twitchMessage.Message).Skip(1));
 
-        if (name?.Nick != twitchMessage.Username)
+        if (!worker.TryGetNextAsViewer(out Viewer viewer) || !PurchaseHelper.TryGetPawn(viewer.username, out Pawn target))
         {
-            pawn.Name = new NameTriple(name?.First ?? "", twitchMessage.Username, name?.Last ?? "");
+            MessageHelper.ReplyToUser(twitchMessage.Username, "TKUtils.PawnNotFound".LocalizeKeyed(worker.GetLast()));
+
+            return;
         }
 
-        twitchMessage.Reply("TKUtils.PawnFix".Localize());
+        TkUtils.Context.Post(c => PerformDivorce(pawn, target), null);
+    }
+
+    private static void PerformDivorce(Pawn askerPawn, Pawn askeePawn)
+    {
+        foreach (Pawn spouse in askerPawn.GetSpouses(false))
+        {
+            if (spouse != askeePawn)
+            {
+                continue;
+            }
+
+            SpouseRelationUtility.DoDivorce(askerPawn, askeePawn);
+
+            break;
+        }
     }
 }

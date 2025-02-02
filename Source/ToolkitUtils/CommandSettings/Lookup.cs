@@ -15,34 +15,33 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using System;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using ToolkitUtils.UX;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.CommandSettings
+namespace SirRandoo.ToolkitUtils.CommandSettings;
+
+public class Lookup : ICommandSettings
 {
-    public class Lookup : ICommandSettings
+    private string _buffer = TkSettings.LookupLimit.ToString();
+
+    public void Draw(Rect region)
     {
-        private string buffer = TkSettings.LookupLimit.ToString();
+        var listing = new Listing_Standard();
 
-        public void Draw(Rect region)
-        {
-            var listing = new Listing_Standard();
+        listing.Begin(region);
 
-            listing.Begin(region);
+        (Rect limitLabel, Rect limitField) = listing.Split();
+        LabelDrawer.Draw(limitLabel, "TKUtils.LookupLimit.Label".TranslateSimple());
+        Widgets.TextFieldNumeric(limitField, ref TkSettings.LookupLimit, ref _buffer);
+        listing.DrawDescription("TKUtils.LookupLimit.Description".TranslateSimple());
 
-            (Rect limitLabel, Rect limitField) = listing.GetRectAsForm();
-            SettingsHelper.DrawLabel(limitLabel, "TKUtils.LookupLimit.Label".Localize());
-            Widgets.TextFieldNumeric(limitField, ref TkSettings.LookupLimit, ref buffer);
-            listing.DrawDescription("TKUtils.LookupLimit.Description".Localize());
+        listing.End();
+    }
 
-            listing.End();
-        }
-
-        public void Save()
-        {
-            TkUtils.Instance.WriteSettings();
-        }
+    public void Save()
+    {
+        TkUtils.Instance.WriteSettings();
     }
 }

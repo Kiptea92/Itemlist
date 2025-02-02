@@ -21,108 +21,108 @@ using SirRandoo.ToolkitUtils.Utils;
 using TwitchToolkit;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Incidents
+namespace SirRandoo.ToolkitUtils.Incidents;
+
+public class HealMe : IncidentVariablesBase
 {
-    [UsedImplicitly]
-    public class HealMe : IncidentVariablesBase
+    private Pawn _pawn;
+    private Hediff _toHeal;
+    private BodyPartRecord _toRestore;
+
+    public override bool CanHappen(string msg, Viewer viewer)
     {
-        private Pawn pawn;
-        private Hediff toHeal;
-        private BodyPartRecord toRestore;
-
-        public override bool CanHappen(string msg, [NotNull] Viewer viewer)
+        if (!PurchaseHelper.TryGetPawn(viewer.username, out _pawn))
         {
-            if (!PurchaseHelper.TryGetPawn(viewer.username, out pawn))
-            {
-                MessageHelper.ReplyToUser(viewer.username, "TKUtils.NoPawn".Localize());
-                return false;
-            }
+            MessageHelper.ReplyToUser(viewer.username, "TKUtils.NoPawn".Localize());
 
-            if (IncidentSettings.HealMe.FairFights
-                && pawn!.mindState.lastAttackTargetTick > 0
-                && Find.TickManager.TicksGame < pawn.mindState.lastAttackTargetTick + 1800)
-            {
-                MessageHelper.ReplyToUser(viewer.username, "TKUtils.InCombat".Localize());
-                return false;
-            }
-
-            object result = HealHelper.GetPawnHealable(pawn!);
-
-            switch (result)
-            {
-                case Hediff hediff:
-                    toHeal = hediff;
-                    break;
-                case BodyPartRecord record:
-                    toRestore = record;
-                    break;
-            }
-
-            return toHeal != null || toRestore != null;
+            return false;
         }
 
-        public override void Execute()
+        if (IncidentSettings.HealMe.FairFights && _pawn!.mindState.lastAttackTargetTick > 0 && Find.TickManager.TicksGame < _pawn.mindState.lastAttackTargetTick + 1800)
         {
-            if (toHeal != null)
-            {
-                HealHelper.Cure(toHeal);
-                Viewer.Charge(storeIncident);
-                NotifySuccess(toHeal.LabelCap);
-            }
+            MessageHelper.ReplyToUser(viewer.username, "TKUtils.InCombat".Localize());
 
-            if (toRestore == null)
-            {
-                return;
-            }
+            return false;
+        }
 
-            pawn.health.RestorePart(toRestore);
+        object result = HealHelper.GetPawnHealable(_pawn!);
+
+        switch (result)
+        {
+            case Hediff hediff:
+                _toHeal = hediff;
+
+                break;
+            case BodyPartRecord record:
+                _toRestore = record;
+
+                break;
+        }
+
+        return _toHeal != null || _toRestore != null;
+    }
+
+    public override void Execute()
+    {
+        if (_toHeal != null)
+        {
+            HealHelper.Cure(_toHeal);
             Viewer.Charge(storeIncident);
-            NotifySuccess(toRestore.Label);
+            NotifySuccess(_toHeal.LabelCap);
         }
 
-        private void NotifySuccess(string target)
+        if (_toRestore == null)
         {
-            if (ToolkitSettings.PurchaseConfirmations)
+            return;
+        }
+
+        _pawn.health.RestorePart(_toRestore);
+        Viewer.Charge(storeIncident);
+        NotifySuccess(_toRestore.Label);
+    }
+
+    private void NotifySuccess(string? target)
+    {
+        if (ToolkitSettings.PurchaseConfirmations)
+        {
+            var response = "";
+
+            if (_toHeal != null)
             {
-                var response = "";
-
-                if (toHeal != null)
-                {
-                    response = "TKUtils.HealMe.Recovered";
-                }
-
-                if (toRestore != null)
-                {
-                    response = "TKUtils.HealMe.Restored";
-                }
-
-                if (!response.NullOrEmpty())
-                {
-                    MessageHelper.ReplyToUser(Viewer.username, response.LocalizeKeyed(target));
-                }
+                response = "TKUtils.HealMe.Recovered";
             }
 
-            var description = "";
-
-            if (toHeal != null)
+            if (_toRestore != null)
             {
-                description = "TKUtils.HealLetter.RecoveredDescription";
+                response = "TKUtils.HealMe.Restored";
             }
 
-            if (toRestore != null)
+            if (!response.NullOrEmpty())
             {
-                description = "TKUtils.HealLetter.RestoredDescription";
+                MessageHelper.ReplyToUser(Viewer.username, response.LocalizeKeyed(target));
             }
+        }
 
-            if (!description.NullOrEmpty())
-            {
-                Current.Game.letterStack.ReceiveLetter(
-                    "TKUtils.HealLetter.Title".Localize(),
-                    description.LocalizeKeyed(Viewer.username, target),
-                    LetterDefOf.PositiveEvent,
-                    pawn
-                );
-            }
+        var description = "";
+
+        if (_toHeal != null)
+        {
+            description = "TKUtils.HealLetter.RecoveredDescription";
+        }
+
+        if (_toRestore != null)
+        {
+            description = "TKUtils.HealLetter.RestoredDescription";
+        }
+
+        if (!description.NullOrEmpty())
+        {
+            Current.Game.letterStack.ReceiveLetter(
+                "TKUtils.HealLetter.Title".Localize(),
+                description.LocalizeKeyed(Viewer.username, target),
+                LetterDefOf.PositiveEvent,
+                _pawn
+            );
         }
     }
 }
