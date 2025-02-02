@@ -16,53 +16,30 @@
 
 using System.Collections.Generic;
 using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Windows;
 using ToolkitCore.Interfaces;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils
+namespace SirRandoo.ToolkitUtils;
+
+/// <summary>
+///     A <see cref="IAddonMenu"/> full of quick menu options for Utils
+///     related content.
+/// </summary>
+[UsedImplicitly]
+public class UtilsAddonMenu : IAddonMenu
 {
-    [UsedImplicitly]
-    public class UtilsAddonMenu : IAddonMenu
+    private static readonly List<FloatMenuOption> Options = new List<FloatMenuOption>
     {
-        private static readonly List<FloatMenuOption> Options;
+        new FloatMenuOption("TKUtils.AddonMenu.Settings".TranslateSimple(), () => Find.WindowStack.Add(new UtilsSettingsWindow())),
+        new FloatMenuOption("TKUtils.AddonMenu.Editor".TranslateSimple(), () => Find.WindowStack.Add(new Editor())),
+        new FloatMenuOption("TKUtils.AddonMenu.PawnKind".TranslateSimple(), () => Find.WindowStack.Add(new PawnKindConfigDialog())),
+        new FloatMenuOption("TKUtils.AddonMenu.Trait".TranslateSimple(), () => Find.WindowStack.Add(new TraitConfigDialog())),
+        new FloatMenuOption("TKUtils.AddonMenu.Purge".TranslateSimple(), () => Find.WindowStack.Add(new PurgeViewersDialog())),
+        new FloatMenuOption("Wiki".TranslateSimple(), () => Application.OpenURL("https://sirrandoo.github.io/toolkit-utils"))
+    };
 
-        static UtilsAddonMenu()
-        {
-            Options = new List<FloatMenuOption>
-            {
-                new FloatMenuOption(
-                    "TKUtils.AddonMenu.Settings".Localize(),
-                    SettingsHelper.OpenSettingsMenuFor<TkUtils>
-                ),
-                new FloatMenuOption(
-                    "TKUtils.AddonMenu.Editor".Localize(),
-                    () => Find.WindowStack.Add(new Editor())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.AddonMenu.PawnKind".Localize(),
-                    () => Find.WindowStack.Add(new PawnKindConfigDialog())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.AddonMenu.Trait".Localize(),
-                    () => Find.WindowStack.Add(new TraitConfigDialog())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.AddonMenu.Purge".Localize(),
-                    () => Find.WindowStack.Add(new PurgeViewersDialog())
-                ),
-                new FloatMenuOption(
-                    "Wiki".Localize(),
-                    () => Application.OpenURL("https://sirrandoo.github.io/toolkit-utils")
-                )
-            };
-        }
-
-        public List<FloatMenuOption> MenuOptions()
-        {
-            return Options;
-        }
-    }
+    /// <inheritdoc cref="IAddonMenu.MenuOptions"/>
+    public List<FloatMenuOption> MenuOptions() => Options;
 }
