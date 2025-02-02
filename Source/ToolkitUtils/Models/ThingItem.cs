@@ -1,290 +1,288 @@
 ﻿// ToolkitUtils
 // Copyright (C) 2021  SirRandoo
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using System.Linq;
-using System.Runtime.Serialization;
 using JetBrains.Annotations;
+using Newtonsoft.Json;
 using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
 using TwitchToolkit.Store;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models;
+
+public class ThingItem : IShopItemBase
 {
-    public class ThingItem : IShopItemBase
+    private string _categoryCached;
+    private ItemData _data;
+    private Item _item;
+    private ThingDef _producedAt;
+    private bool _productionIndexed;
+    private bool _usabilityIndexed;
+    private bool _usable;
+
+    [CanBeNull]
+    [JsonIgnore]
+    public Item Item
     {
-        private string categoryCached;
-        private ItemData data;
-        private Item item;
-        private ThingDef producedAt;
-        private bool productionIndexed;
-        private bool usabilityIndexed;
-        private bool usable;
-
-        [CanBeNull]
-        [IgnoreDataMember]
-        public Item Item
+        get
         {
-            get
+            if (_item != null)
             {
-                if (item != null)
-                {
-                    return item;
-                }
-
-                if (Thing == null)
-                {
-                    return null;
-                }
-
-                item = StoreInventory.items.Find(i => i?.defname?.Equals(Thing.defName) == true);
-
-                if (item == null)
-                {
-                    item = new Item(Thing.CalculateStorePrice(), Thing.label.ToToolkit(), Thing.defName);
-                    StoreInventory.items.Add(item);
-                }
-                else
-                {
-                    Enabled = item.price > 0;
-                }
-
-                return item;
+                return _item;
             }
-            set => item = value;
+
+            if (Thing == null)
+            {
+                return null;
+            }
+
+            _item = StoreInventory.items.Find(i => i?.defname?.Equals(Thing.defName) == true);
+
+            if (_item == null)
+            {
+                _item = new Item(Thing.CalculateStorePrice(), Thing.label.ToToolkit(), Thing.defName);
+                StoreInventory.items.Add(_item);
+            }
+            else
+            {
+                Enabled = _item.price > 0;
+            }
+
+            return _item;
         }
+        set => _item = value;
+    }
 
-        [NotNull] [DataMember(Name = "mod")] public string Mod => Data?.Mod ?? Thing.TryGetModName();
+    [JsonProperty("mod")] public string Mod => Data?.Mod ?? Thing.TryGetModName();
 
-        [IgnoreDataMember] public ThingDef Thing { get; set; }
+    [JsonIgnore] public ThingDef? Thing { get; set; }
 
-        [CanBeNull]
-        [IgnoreDataMember]
-        public ThingDef ProducedAt
+    [JsonIgnore]
+    public ThingDef? ProducedAt
+    {
+        get
         {
-            get
+            if (!_productionIndexed)
             {
-                if (!productionIndexed)
-                {
-                    producedAt = DefDatabase<RecipeDef>.AllDefs
-                       .Where(
-                            i => i.recipeUsers != null
-                                 && i.products.Count == 1
-                                 && i.products.Any(p => p.thingDef == Thing)
-                        )
-                       .SelectMany(i => i.recipeUsers)
-                       .Distinct()
-                       .OrderBy(i => (int)i.techLevel)
-                       .FirstOrDefault();
+                _producedAt = DefDatabase<RecipeDef>.AllDefs.Where(i => i.recipeUsers != null && i.products.Count == 1 && i.products.Any(p => p.thingDef == Thing))
+                   .SelectMany(i => i.recipeUsers)
+                   .Distinct()
+                   .OrderBy(i => (int)i.techLevel)
+                   .FirstOrDefault();
 
-                    productionIndexed = true;
-                }
-
-                return producedAt;
+                _productionIndexed = true;
             }
-        }
 
-        [CanBeNull]
-        [DataMember(Name = "data")]
-        public ItemData ItemData
+            return _producedAt;
+        }
+    }
+
+    [CanBeNull]
+    [JsonProperty("data")]
+    public ItemData ItemData
+    {
+        get => _data ??= (ItemData)Data;
+        set => Data = _data = value;
+    }
+
+    [JsonProperty("category")]
+    public string Category
+    {
+        get
         {
-            get => data ??= (ItemData)Data;
-            set => Data = data = value;
-        }
+            if (!_categoryCached.NullOrEmpty())
+            {
+                return _categoryCached;
+            }
 
-        [DataMember(Name = "category")]
-        public string Category
+            string category = Thing?.FirstThingCategory?.LabelCap ?? string.Empty;
+
+            if (category.NullOrEmpty() && Thing?.race != null)
+            {
+                category = "TechLevel_Animal".Localize().CapitalizeFirst();
+            }
+
+            _categoryCached = category;
+
+            return _categoryCached;
+        }
+    }
+
+    [JsonIgnore]
+    public bool IsUsable
+    {
+        get
         {
-            get
+            if (_usabilityIndexed || Thing == null)
             {
-                if (!categoryCached.NullOrEmpty())
-                {
-                    return categoryCached;
-                }
-
-                string category = Thing?.FirstThingCategory?.LabelCap ?? string.Empty;
-
-                if (category.NullOrEmpty() && Thing?.race != null)
-                {
-                    category = "TechLevel_Animal".Localize().CapitalizeFirst();
-                }
-
-                categoryCached = category;
-                return categoryCached;
+                return _usable;
             }
-        }
 
-        [IgnoreDataMember]
-        public bool IsUsable
+            _usable = CompatRegistry.AllUsabilityHandlers.Any(h => h.IsUsable(Thing));
+            _usabilityIndexed = true;
+
+            return _usable;
+        }
+    }
+
+    [CanBeNull]
+    [JsonProperty("defName")]
+    public string? DefName
+    {
+        get => Item?.defname ?? Thing?.defName;
+        set
         {
-            get
+            if (Item != null)
             {
-                if (!usabilityIndexed && Thing != null)
-                {
-                    usable = CompatRegistry.UsabilityHandlers.Any(h => h.IsUsable(Thing));
-                    usabilityIndexed = true;
-                }
-
-                return usable;
+                Item.defname = value;
             }
+
+            Thing = DefDatabase<ThingDef>.GetNamed(value, false);
         }
+    }
 
-        [CanBeNull]
-        [DataMember(Name = "defName")]
-        public string DefName
-        {
-            get => Item?.defname ?? Thing?.defName;
-            set
-            {
-                if (Item != null)
-                {
-                    Item.defname = value;
-                }
+    [JsonProperty("enabled")] public bool Enabled { get; set; }
 
-                Thing = DefDatabase<ThingDef>.GetNamed(value, false);
-            }
-        }
-
-        [DataMember(Name = "enabled")] public bool Enabled { get; set; }
-
-        [NotNull]
-        [DataMember(Name = "name")]
-        public string Name
-        {
-            get => ItemData?.CustomName ?? Item?.abr ?? "Fetching...";
-            set
-            {
-                if (ItemData != null)
-                {
-                    ItemData.CustomName = value;
-                }
-            }
-        }
-
-        [DataMember(Name = "price")]
-        public int Cost
-        {
-            get => Item?.price ?? -10;
-            set
-            {
-                if (Item != null)
-                {
-                    Item.price = value;
-                }
-            }
-        }
-
-        [CanBeNull]
-        [IgnoreDataMember]
-        public IShopDataBase Data
-        {
-            get
-            {
-                if (data == null && ToolkitUtils.Data.ItemData.TryGetValue(Thing.defName, out ItemData result))
-                {
-                    data = result;
-                }
-
-                return data;
-            }
-            set
-            {
-                data = (ItemData)value;
-
-                if (Item?.defname != null)
-                {
-                    ToolkitUtils.Data.ItemData[Item!.defname] = data;
-                }
-            }
-        }
-
-        public void ResetName()
+    [JsonProperty("name")]
+    public string? Name
+    {
+        get => ItemData?.CustomName ?? Item?.abr ?? "Fetching...";
+        set
         {
             if (ItemData != null)
             {
-                ItemData.CustomName = null;
+                ItemData.CustomName = value;
             }
         }
+    }
 
-        public void ResetPrice()
+    [JsonProperty("price")]
+    public int Cost
+    {
+        get => Item?.price ?? -10;
+        set
         {
-            if (Thing == null)
+            if (Item != null)
             {
-                return;
-            }
-
-            Cost = Thing.CalculateStorePrice();
-
-            if (!Enabled)
-            {
-                Enabled = true;
+                Item.price = value;
             }
         }
+    }
 
-        public void ResetData()
+    [CanBeNull]
+    [JsonIgnore]
+    public IShopDataBase Data
+    {
+        get
         {
-            ItemData?.Reset();
-        }
-
-        public void Update()
-        {
-            if (Item == null)
+            if (_data == null && ToolkitUtils.Data.ItemData.TryGetValue(Thing.defName, out ItemData result))
             {
-                return;
+                _data = result;
             }
 
-            if (Item.price == 0)
+            return _data;
+        }
+        set
+        {
+            _data = (ItemData)value;
+
+            if (Item?.defname != null)
             {
-                Enabled = false;
+                ToolkitUtils.Data.ItemData[Item!.defname] = _data;
+            }
+        }
+    }
+
+    public void ResetName()
+    {
+        if (ItemData != null)
+        {
+            ItemData.CustomName = null;
+        }
+    }
+
+    public void ResetPrice()
+    {
+        if (Thing == null)
+        {
+            return;
+        }
+
+        Cost = Thing.CalculateStorePrice();
+
+        if (!Enabled)
+        {
+            Enabled = true;
+        }
+    }
+
+    public void ResetData()
+    {
+        ItemData?.Reset();
+    }
+
+    public void Update()
+    {
+        if (Item == null)
+        {
+            return;
+        }
+
+        if (Item.price == 0)
+        {
+            Enabled = false;
+            Item.price = -10;
+
+            return;
+        }
+
+        switch (Enabled)
+        {
+            case true when Item.price < 0:
+                Item.price = Thing.CalculateStorePrice();
+
+                break;
+            case false when Item.price > 0:
                 Item.price = -10;
-                return;
-            }
 
-            switch (Enabled)
-            {
-                case true when Item.price < 0:
-                    Item.price = Thing.CalculateStorePrice();
-                    break;
-                case false when Item.price > 0:
-                    Item.price = -10;
-                    break;
-            }
-
-            Enabled = Item.price > 0;
+                break;
         }
 
-        public override string ToString()
-        {
-            var container = "ThingItem(\n";
+        Enabled = Item.price > 0;
+    }
 
-            container += "  Item(\n";
-            container += $"    defName={Item?.defname?.ToStringSafe()}\n";
-            container += $"    abr={Item?.abr?.ToStringSafe()}\n";
-            container += $"    price={Item?.price.ToStringSafe()}\n";
-            container += "  ),\n";
+    public override string? ToString()
+    {
+        var container = "ThingItem(\n";
 
-            container += "  Thing(\n";
-            container += $"    defName={Thing?.defName?.ToStringSafe()}\n";
-            container += "  ),\n";
+        container += "  Item(\n";
+        container += $"    defName={Item?.defname?.ToStringSafe()}\n";
+        container += $"    abr={Item?.abr?.ToStringSafe()}\n";
+        container += $"    price={Item?.price.ToStringSafe()}\n";
+        container += "  ),\n";
 
-            container += $"  Mod={Mod.ToStringSafe()},\n";
-            container += $"  Enabled={Enabled}\n";
-            container += ")";
+        container += "  Thing(\n";
+        container += $"    defName={Thing?.defName?.ToStringSafe()}\n";
+        container += "  ),\n";
 
-            return container;
-        }
+        container += $"  Mod={Mod.ToStringSafe()},\n";
+        container += $"  Enabled={Enabled}\n";
+        container += ")";
+
+        return container;
     }
 }

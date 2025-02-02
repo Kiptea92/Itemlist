@@ -14,23 +14,16 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using JetBrains.Annotations;
-using RimWorld;
-using Verse;
+using System.Collections.Generic;
+using Newtonsoft.Json;
 
-namespace SirRandoo.ToolkitUtils.Models.UsabilityHandlers;
+namespace SirRandoo.ToolkitUtils.Models;
 
-[UsedImplicitly]
-public record DefaultUsabilityHandler : UsabilityHandlerBase<CompUseEffect>
+public class TokenValidateResponse
 {
-    public DefaultUsabilityHandler() : base(typeof(CompUseEffect_DestroySelf), typeof(CompUseEffect_StartWick), typeof(CompUseEffect_PlaySound))
-    {
-    }
-
-    protected override bool IsUsable(CompUseEffect comp, Pawn pawn, ThingDef thing) => comp.CanBeUsedBy(pawn);
-
-    protected override void Use(CompUseEffect comp, Pawn pawn, Thing thing)
-    {
-        comp.DoEffect(pawn);
-    }
+    [JsonProperty("client_id")] public string ClientId { get; set; }
+    [JsonProperty("login")] public string Login { get; set; }
+    [JsonProperty("scopes")] public List<string> Scopes { get; set; }
+    [JsonProperty("user_id")] public string UserId { get; set; }
+    [JsonProperty("expires_in")] public int ExpiresIn { get; set; }
 }

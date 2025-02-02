@@ -15,22 +15,34 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using JetBrains.Annotations;
-using RimWorld;
+using SirRandoo.ToolkitUtils.Interfaces;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Models.UsabilityHandlers;
+namespace SirRandoo.ToolkitUtils.Models;
 
-[UsedImplicitly]
-public record DefaultUsabilityHandler : UsabilityHandlerBase<CompUseEffect>
+public class PawnPower : IPawnPower
 {
-    public DefaultUsabilityHandler() : base(typeof(CompUseEffect_DestroySelf), typeof(CompUseEffect_StartWick), typeof(CompUseEffect_PlaySound))
+    public PawnPower()
     {
     }
 
-    protected override bool IsUsable(CompUseEffect comp, Pawn pawn, ThingDef thing) => comp.CanBeUsedBy(pawn);
-
-    protected override void Use(CompUseEffect comp, Pawn pawn, Thing thing)
+    public PawnPower(Def def, int minimumLevel)
     {
-        comp.DoEffect(pawn);
+        MinimumLevel = minimumLevel;
+        Name = def.label ?? def.defName;
     }
+
+    public PawnPower(string name, int minimumLevel)
+    {
+        Name = name;
+        MinimumLevel = minimumLevel;
+    }
+
+    public virtual string? Name { get; }
+
+    public virtual int MinimumLevel { get; }
+
+    public static PawnPower From(string name, int minimumLevel) => new(name, minimumLevel);
+
+    public static IPawnPower From(Def def, int minimumLevel) => new PawnPower(def, minimumLevel);
 }

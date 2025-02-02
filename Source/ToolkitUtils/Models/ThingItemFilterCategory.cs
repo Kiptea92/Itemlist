@@ -17,75 +17,78 @@
 using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
+using SirRandoo.ToolkitUtils.Models.Tables;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models;
+
+public class ThingItemFilterCategory
 {
-    public class ThingItemFilterCategory
+    private MultiCheckboxState _checkboxState = MultiCheckboxState.Off;
+    public bool Expanded;
+
+    public FilterTypes FilterType;
+
+    public MultiCheckboxState CheckState
     {
-        private MultiCheckboxState checkboxState = MultiCheckboxState.Off;
-        public bool Expanded;
-
-        public FilterTypes FilterType;
-
-        public MultiCheckboxState CheckState
+        get => _checkboxState;
+        set
         {
-            get => checkboxState;
-            set
+            if (_checkboxState == MultiCheckboxState.Partial && value != MultiCheckboxState.Partial)
             {
-                if (checkboxState == MultiCheckboxState.Partial && value != MultiCheckboxState.Partial)
+                foreach (ThingItemFilter f in Filters)
                 {
-                    foreach (ThingItemFilter f in Filters)
-                    {
-                        f.Active = false;
-                    }
-
-                    checkboxState = MultiCheckboxState.Off;
-                    return;
+                    f.Active = false;
                 }
 
-                foreach (ThingItemFilter filter in Filters)
+                _checkboxState = MultiCheckboxState.Off;
+
+                return;
+            }
+
+            foreach (ThingItemFilter filter in Filters)
+            {
+                switch (value)
                 {
-                    switch (value)
-                    {
-                        case MultiCheckboxState.Off:
-                            filter.Active = false;
-                            break;
-                        case MultiCheckboxState.On:
-                            filter.Active = true;
-                            break;
-                    }
+                    case MultiCheckboxState.Off:
+                        filter.Active = false;
+
+                        break;
+                    case MultiCheckboxState.On:
+                        filter.Active = true;
+
+                        break;
                 }
             }
         }
+    }
 
-        public List<ThingItemFilter> Filters { get; set; } = new List<ThingItemFilter>();
-        [NotNull] public IEnumerable<ThingItemFilter> ActiveFilters => Filters.Where(i => i.Active);
+    public List<ThingItemFilter> Filters { get; set; } = new List<ThingItemFilter>();
+    public IEnumerable<ThingItemFilter> ActiveFilters => Filters.Where(i => i.Active);
 
-        public float Height => (Expanded ? Filters.Count + 1 : 1) * Text.LineHeight;
+    public float Height => (Expanded ? Filters.Count + 1 : 1) * Text.LineHeight;
 
-        public void MarkDirty()
+    public void MarkDirty()
+    {
+        int totalFilters = Filters.Count;
+        int activeFilters = Filters.Count(f => f.Active);
+
+        if (activeFilters > 0 && activeFilters < totalFilters)
         {
-            int totalFilters = Filters.Count;
-            int activeFilters = Filters.Count(f => f.Active);
-
-            if (activeFilters > 0 && activeFilters < totalFilters)
-            {
-                checkboxState = MultiCheckboxState.Partial;
-            }
-            else if (activeFilters <= 0)
-            {
-                checkboxState = MultiCheckboxState.Off;
-            }
-            else if (activeFilters >= totalFilters)
-            {
-                checkboxState = MultiCheckboxState.On;
-            }
+            _checkboxState = MultiCheckboxState.Partial;
         }
-
-        public bool IsFiltered(TableSettingsItem<ThingItem> item)
+        else if (activeFilters <= 0)
         {
-            return ActiveFilters.Any() && ActiveFilters.All(i => !i.IsUnfilteredFunc(item));
+            _checkboxState = MultiCheckboxState.Off;
         }
+        else if (activeFilters >= totalFilters)
+        {
+            _checkboxState = MultiCheckboxState.On;
+        }
+    }
+
+    public bool IsFiltered(TableSettingsItem<ThingItem> item)
+    {
+        return ActiveFilters.Any() && ActiveFilters.All(i => !i.IsUnfilteredFunc(item));
     }
 }

@@ -18,22 +18,19 @@ using JetBrains.Annotations;
 using SirRandoo.ToolkitUtils.Interfaces;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Models
+namespace SirRandoo.ToolkitUtils.Models.UsabilityHandlers;
+
+[UsedImplicitly]
+public record IngestabilityUsabilityHandler : IUsabilityHandler
 {
-    public class IngestabilityUsabilityHandler : IUsabilityHandler
+    public bool IsUsable(ThingDef thing) => thing.IsIngestible;
+
+    public void Use(Pawn pawn, ThingDef thingDef)
     {
-        [NotNull] public string Id => "tkutils.handlers.usability.ingestability";
+        Thing thing = ThingMaker.MakeThing(thingDef);
 
-        public bool IsUsable([NotNull] ThingDef thing)
-        {
-            return thing.IsIngestible;
-        }
-
-        public void Use(Pawn pawn, ThingDef thingDef)
-        {
-            Thing thing = ThingMaker.MakeThing(thingDef);
-
-            thing.Ingested(pawn, pawn.needs.food.NutritionWanted);
-        }
+        pawn.needs.food.CurLevel += thing.Ingested(pawn, pawn.needs.food.NutritionWanted);
     }
+
+    public string ModId { get; init; } = "sirrandoo.tku";
 }
