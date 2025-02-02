@@ -31,10 +31,12 @@
     <TKUtils.InCombat>This cannot cannot be performed while in combat.</TKUtils.InCombat>
     <TKUtils.Paused>This action cannot be performed while the game is paused.</TKUtils.Paused>
     <TKUtils.InputUnsupported>{0} are not supported by this command!</TKUtils.InputUnsupported>
+    <TKUtils.Overflowed>The requested action would exceed the integer limit.</TKUtils.Overflowed>
     <TKUtils.InvalidItemQuery>No item by the name of "{0}" could be found.</TKUtils.InvalidItemQuery>
     <TKUtils.InvalidTraitQuery>No trait by the name of "{0}" could be found.</TKUtils.InvalidTraitQuery>
     <TKUtils.InvalidSkillQuery>No skill by the name of "{0}" could be found.</TKUtils.InvalidSkillQuery>
     <TKUtils.InvalidKindQuery>No pawn kind by the name of "{0}" could be found.</TKUtils.InvalidKindQuery>
+    <TKUtils.InvalidViewerQuery>No viewer by the name of "{0}" could be found.</TKUtils.InvalidViewerQuery>
     <TKUtils.InformativeDisabledItem>The requested item ({0}) is disabled.</TKUtils.InformativeDisabledItem>
     <TKUtils.WagerRequired>Your wager of {0} does not meet the minimum requirement of {1}.</TKUtils.WagerRequired>
     <TKUtils.InsufficientBalance>The requested item costs {0} coins, but you only have {1} coins.</TKUtils.InsufficientBalance>
