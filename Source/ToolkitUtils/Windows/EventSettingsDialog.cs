@@ -1,39 +1,41 @@
 ﻿// ToolkitUtils
 // Copyright (C) 2021  SirRandoo
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using SirRandoo.ToolkitUtils.Models;
-using SirRandoo.ToolkitUtils.Models.Tables;
+using SirRandoo.ToolkitUtils.Interfaces;
+using UnityEngine;
+using Verse;
 
-namespace SirRandoo.ToolkitUtils.Workers;
+namespace SirRandoo.ToolkitUtils.Windows;
 
 /// <summary>
-///     A class for drawing an event editor page in a portable way.
+///     A dialog for drawing <see cref="IEventSettings"/>s.
 /// </summary>
-public class EventWorker : ItemWorkerBase<TableWorker<TableSettingsItem<EventItem>>, EventItem>
+public class EventSettingsDialog : Window
 {
-    /// <inheritdoc cref="ItemWorkerBase{T,TU}.Prepare"/>
-    public override void Prepare()
-    {
-        base.Prepare();
-        Worker = new EventTableWorker();
-        Worker.Prepare();
+    private readonly IEventSettings _settings;
 
-        DiscoverMutators(DomainIndexer.EditorTarget.Any);
-        DiscoverSelectors(DomainIndexer.EditorTarget.Any);
-        DiscoverMutators(DomainIndexer.EditorTarget.Event);
-        DiscoverSelectors(DomainIndexer.EditorTarget.Event);
+    public EventSettingsDialog(IEventSettings settings)
+    {
+        _settings = settings;
+        doCloseButton = true;
+    }
+
+    /// <inheritdoc cref="Window.DoWindowContents"/>
+    public override void DoWindowContents(Rect region)
+    {
+        _settings.Draw(region, Text.LineHeight);
     }
 }

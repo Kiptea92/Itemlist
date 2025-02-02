@@ -1,4 +1,4 @@
-﻿// ToolkitUtils
+// ToolkitUtils
 // Copyright (C) 2021  SirRandoo
 //
 // This program is free software: you can redistribute it and/or modify
@@ -19,343 +19,397 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading.Tasks;
 using HarmonyLib;
-using JetBrains.Annotations;
+using RimWorld;
 using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Interfaces;
+using SirRandoo.ToolkitUtils.Models;
+using ToolkitUtils.UX;
 using TwitchToolkit;
 using TwitchToolkit.Windows;
 using UnityEngine;
 using Verse;
 using Command = TwitchToolkit.Command;
+using Text = Verse.Text;
 
-namespace SirRandoo.ToolkitUtils.Windows
+namespace SirRandoo.ToolkitUtils.Windows;
+
+/// <summary>
+///     A window for editing Twitch Toolkit commands.
+/// </summary>
+[StaticConstructorOnStartup]
+public class CommandEditorDialog : Window_CommandEditor
 {
-    [StaticConstructorOnStartup]
-    public class CommandEditorDialog : Window_CommandEditor
+    private static readonly MethodInfo RemoveMethod = AccessTools.Method(typeof(DefDatabase<Command>), "Remove");
+
+    private readonly Command _command;
+    private readonly CommandItem _commandItem;
+    private readonly ICommandSettings _settings = null!;
+    private string _adminText = null!;
+    private string _anyoneText = null!;
+    private string _commandLabel = null!;
+    private bool _confirmed;
+
+    private bool _confirming;
+    private string _confirmText = null!;
+    private float _confirmTextWidth;
+    private string _deletedText = null!;
+    private float _deletedTextWidth;
+    private string _deleteText = null!;
+    private float _deleteTextWidth;
+    private string _disableText = null!;
+    private float _disableTextWidth;
+    private TextEditor? _editor;
+    private string _enableText = null!;
+    private float _enableTextWidth;
+    private string _globalCooldownBuffer = null!;
+    private string _globalCooldownText = null!;
+    private bool _globalCooldownValid;
+    private string _headerText = null!;
+    private bool _invalidId;
+    private string _localCooldownBuffer = null!;
+    private string _localCooldownText = null!;
+    private bool _localCooldownValid;
+    private string _moderatorText = null!;
+    private Vector2 _scrollPos = Vector2.zero;
+    private string _settingsText = null!;
+    private float _settingsTextWidth;
+    private bool _showingSettings;
+    private string _tagTooltip = null!;
+    private List<FloatMenuOption>? _userLevelOptions;
+    private string _userLevelText = null!;
+
+    public CommandEditorDialog(Command command) : base(command)
     {
-        private static readonly MethodInfo RemoveMethod;
+        _command = command;
+        _commandItem = Data.Commands.Find(c => string.Equals(c.DefName, command.defName));
+        var ext = command.GetModExtension<CommandExtension>();
 
-        private readonly Command command;
-        private readonly ICommandSettings settings;
-        private string adminText;
-        private string anyoneText;
-        private string commandLabel;
-        private bool confirmed;
-
-        private bool confirming;
-        private string confirmText;
-        private float confirmTextWidth;
-        private string deletedText;
-        private float deletedTextWidth;
-        private string deleteText;
-        private float deleteTextWidth;
-        private string disableText;
-        private float disableTextWidth;
-        private TextEditor editor;
-        private Rect editorPosition;
-        private string enableText;
-        private float enableTextWidth;
-        private string headerText;
-        private bool invalidId;
-        private string moderatorText;
-        private Vector2 scrollPos = Vector2.zero;
-        private string settingsText;
-        private float settingsTextWidth;
-        private bool showingSettings;
-        private string tagTooltip;
-        private List<FloatMenuOption> userLevelOptions;
-        private string userLevelText;
-
-        static CommandEditorDialog()
+        if (_commandItem.Data is not null)
         {
-            RemoveMethod = AccessTools.Method(typeof(DefDatabase<Command>), "Remove");
+            _localCooldownValid = true;
+            _globalCooldownValid = true;
+            _localCooldownBuffer = _commandItem.Data.LocalCooldown.ToString();
+            _globalCooldownBuffer = _commandItem.Data.GlobalCooldown.ToString();
         }
 
-        public CommandEditorDialog([NotNull] Command command) : base(command)
+        if (ext?.SettingsHandler is not null)
         {
-            this.command = command;
-
-            var ext = command.GetModExtension<CommandExtension>();
-
-            if (ext?.SettingsHandler != null)
-            {
-                settings = Activator.CreateInstance(ext.SettingsHandler) as ICommandSettings;
-            }
+            _settings = (Activator.CreateInstance(ext.SettingsHandler) as ICommandSettings)!;
         }
-
-        public override void PostOpen()
-        {
-            base.PostOpen();
-
-            GetTranslations();
-            userLevelOptions ??= new List<FloatMenuOption>
-            {
-                new FloatMenuOption(anyoneText, () => ChangeUserLevel(UserLevel.Anyone)),
-                new FloatMenuOption(moderatorText, () => ChangeUserLevel(UserLevel.Moderator)),
-                new FloatMenuOption(adminText, () => ChangeUserLevel(UserLevel.Admin))
-            };
-            invalidId = command.command.NullOrEmpty()
-                        || command.command?.TrimStart(TkSettings.Prefix.ToCharArray()).NullOrEmpty() == true;
-        }
-
-        public override void DoWindowContents(Rect region)
-        {
-            if (Event.current.type == EventType.Layout)
-            {
-                return;
-            }
-
-            GUI.BeginGroup(region);
-
-            if (!showingSettings)
-            {
-                var buttonBar = new Rect(0f, 0f, region.width, Text.SmallFontHeight);
-                Rect content = new Rect(
-                    0f,
-                    Text.SmallFontHeight * 2,
-                    region.width,
-                    region.height - Text.SmallFontHeight
-                ).ContractedBy(20f);
-
-                GUI.BeginGroup(buttonBar);
-                DrawButtonBar(buttonBar.AtZero());
-                GUI.EndGroup();
-
-                GUI.BeginGroup(content);
-                DrawContent(content.AtZero());
-                GUI.EndGroup();
-            }
-            else
-            {
-                settings?.Draw(region);
-            }
-
-            GUI.EndGroup();
-        }
-
-        private void DrawContent(Rect region)
-        {
-            var listing = new Listing_Standard();
-
-            GUI.BeginGroup(region);
-            listing.Begin(region);
-
-            (Rect labelRect, Rect fieldRect) = listing.GetRectAsForm(0.6f);
-            SettingsHelper.DrawLabel(labelRect, commandLabel);
-
-            GUI.color = invalidId ? new Color(1f, 0.53f, 0.76f) : Color.white;
-            if (SettingsHelper.DrawTextField(fieldRect, $"{TkSettings.Prefix}{command.command}", out string newContent))
-            {
-                if (newContent.ToToolkit().Length - TkSettings.Prefix.Length < 0)
-                {
-                    invalidId = true;
-                }
-                else
-                {
-                    command.command = newContent.Substring(TkSettings.Prefix.Length).ToToolkit();
-                    invalidId = false;
-                }
-            }
-
-            GUI.color = Color.white;
-
-            if (command.isCustomMessage)
-            {
-                DrawCustomFields(listing);
-            }
-
-            listing.End();
-            GUI.EndGroup();
-        }
-
-        private void DrawCustomFields([NotNull] Listing listing)
-        {
-            (Rect levelLabel, Rect levelField) = listing.GetRectAsForm(0.6f);
-            SettingsHelper.DrawLabel(levelLabel, userLevelText);
-
-            if (Widgets.ButtonText(levelField, GetInferredUserLevelText()))
-            {
-                Find.WindowStack.Add(new FloatMenu(userLevelOptions));
-            }
-
-            listing.Gap(24f);
-            if (SettingsHelper.DrawFieldButton(
-                listing.GetRect(Text.SmallFontHeight),
-                Textures.QuestionMark,
-                tagTooltip
-            ))
-            {
-                Application.OpenURL("https://storytoolkit.fandom.com/wiki/Commands#Tags");
-            }
-
-            editorPosition = listing.GetRect(Text.SmallFontHeight * 11f);
-
-            GUI.BeginGroup(editorPosition);
-            command.outputMessage = Widgets.TextAreaScrollable(
-                editorPosition.AtZero(),
-                command.outputMessage,
-                ref scrollPos
-            );
-            editor ??= GUIUtility.GetStateObject(
-                typeof(TextEditor),
-                GUIUtility.GetControlID(FocusType.Keyboard, editorPosition)
-            ) as TextEditor;
-            GUI.EndGroup();
-        }
-
-        public override void OnAcceptKeyPressed()
-        {
-            if (GUIUtility.keyboardControl <= 0 || editor == null)
-            {
-                base.OnAcceptKeyPressed();
-                return;
-            }
-
-            command.outputMessage += "\n";
-            editor.MoveDown();
-            Event.current.Use();
-        }
-
-        public override void OnCancelKeyPressed()
-        {
-            if (GUIUtility.keyboardControl <= 0 || editor == null)
-            {
-                base.OnCancelKeyPressed();
-                return;
-            }
-
-            GUIUtility.keyboardControl = 0;
-            Event.current.Use();
-        }
-
-        public override void Close(bool doCloseSound = true)
-        {
-            if (showingSettings)
-            {
-                showingSettings = false;
-                return;
-            }
-
-            base.Close(doCloseSound);
-        }
-
-        public override void PostClose()
-        {
-            base.PostClose();
-
-            if (TkSettings.Offload)
-            {
-                Task.Run(async () => await Data.DumpCommandsAsync()).ConfigureAwait(false);
-            }
-            else
-            {
-                Data.DumpCommands();
-            }
-        }
-
-        private void DrawButtonBar(Rect region)
-        {
-            float width = Mathf.Max(
-                deleteTextWidth,
-                confirmTextWidth,
-                enableTextWidth,
-                disableTextWidth,
-                deletedTextWidth,
-                settingsTextWidth
-            );
-
-            var buttonRect = new Rect(region.x + region.width - width, region.y, width, Text.SmallFontHeight);
-
-            if (command.isCustomMessage)
-            {
-                DrawCustomCommandButtons(buttonRect);
-                buttonRect = buttonRect.ShiftLeft(0f);
-            }
-
-            if (Widgets.ButtonText(buttonRect, command.enabled ? disableText : enableText))
-            {
-                command.enabled = !command.enabled;
-            }
-
-            if (settings != null)
-            {
-                buttonRect = buttonRect.ShiftLeft(0f);
-
-                if (Widgets.ButtonText(buttonRect, settingsText))
-                {
-                    GUIUtility.keyboardControl = 0;
-                    showingSettings = true;
-                }
-            }
-
-            var headerRect = new Rect(0f, 0f, region.width - buttonRect.width * 2 - 5f, Text.SmallFontHeight);
-            SettingsHelper.DrawFittedLabel(headerRect, headerText);
-        }
-
-        private void DrawCustomCommandButtons(Rect buttonRect)
-        {
-            if (!confirmed && Widgets.ButtonText(buttonRect, confirming ? confirmText : deleteText))
-            {
-                confirming = !confirming;
-                confirmed = confirming == false;
-
-                if (confirmed)
-                {
-                    ToolkitSettings.CustomCommandDefs.Remove(command.defName);
-                    RemoveMethod.Invoke(typeof(DefDatabase<Command>), new object[] { command });
-                }
-            }
-
-            if (confirmed)
-            {
-                SettingsHelper.DrawColoredLabel(buttonRect, deletedText, new Color(1f, 0.53f, 0.76f));
-            }
-        }
-
-        private void ChangeUserLevel(UserLevel level)
-        {
-            command.requiresAdmin = level == UserLevel.Admin;
-            command.requiresMod = level == UserLevel.Moderator;
-        }
-
-        private string GetInferredUserLevelText()
-        {
-            if (command.requiresAdmin)
-            {
-                return adminText;
-            }
-
-            return command.requiresMod ? moderatorText : anyoneText;
-        }
-
-        private void GetTranslations()
-        {
-            headerText =
-                "TKUtils.CommandEditor.Header".LocalizeKeyed((command.label ?? command.defName).CapitalizeFirst());
-            commandLabel = "TKUtils.Fields.Command".Localize();
-            deleteText = "TKUtils.Buttons.Delete".Localize();
-            enableText = "TKUtils.Buttons.Enable".Localize();
-            disableText = "TKUtils.Buttons.Disable".Localize();
-            confirmText = "TKUtils.Buttons.AreYouSure".Localize();
-            deletedText = "TKUtils.Headers.RestartRequired".Localize();
-            anyoneText = "TKUtils.CommandEditor.UserLevel.Anyone".Localize();
-            moderatorText = "TKUtils.CommandEditor.UserLevel.Moderator".Localize();
-            adminText = "TKUtils.CommandEditor.UserLevel.Admin".Localize();
-            userLevelText = "TKUtils.Fields.UserLevel".Localize();
-            tagTooltip = "TKUtils.CommandEditorTooltips.Tags".Localize();
-            settingsText = "TKUtils.Buttons.Settings".Localize();
-
-            GameFont cache = Text.Font;
-            Text.Font = GameFont.Small;
-            deleteTextWidth = Text.CalcSize(deleteText).x;
-            confirmTextWidth = Text.CalcSize(confirmText).x;
-            enableTextWidth = Text.CalcSize(enableText).x;
-            disableTextWidth = Text.CalcSize(disableText).x;
-            deletedTextWidth = Text.CalcSize(deletedText).x;
-            settingsTextWidth = Text.CalcSize(settingsText).x;
-            Text.Font = cache;
-        }
-
-        private enum UserLevel { Anyone, Moderator, Admin }
     }
+
+    /// <inheritdoc cref="Window.PostOpen" />
+    public override void PostOpen()
+    {
+        base.PostOpen();
+
+        GetTranslations();
+
+        _userLevelOptions ??= new List<FloatMenuOption>
+        {
+            new(_anyoneText, () => ChangeUserLevel(UserLevel.Anyone)),
+            new(_moderatorText, () => ChangeUserLevel(UserLevel.Moderator)),
+            new(_adminText, () => ChangeUserLevel(UserLevel.Admin))
+        };
+
+        _invalidId = _command.command.NullOrEmpty() || _command.command?.TrimStart(TkSettings.Prefix.ToCharArray()).NullOrEmpty() == true;
+    }
+
+    /// <inheritdoc cref="Window_CommandEditor.DoWindowContents" />
+    public override void DoWindowContents(Rect inRect)
+    {
+        if (Event.current.type == EventType.Layout)
+        {
+            return;
+        }
+
+        GUI.BeginGroup(inRect);
+
+        if (!_showingSettings)
+        {
+            var buttonBar = new Rect(0f, 0f, inRect.width, Text.SmallFontHeight);
+            Rect content = new Rect(0f, Text.SmallFontHeight * 2, inRect.width, inRect.height - Text.SmallFontHeight).ContractedBy(20f);
+
+            GUI.BeginGroup(buttonBar);
+            DrawButtonBar(buttonBar.AtZero());
+            GUI.EndGroup();
+
+            GUI.BeginGroup(content);
+            DrawContent(content.AtZero());
+            GUI.EndGroup();
+        }
+        else
+        {
+            _settings?.Draw(inRect);
+        }
+
+        GUI.EndGroup();
+    }
+
+    private void DrawContent(Rect region)
+    {
+        var listing = new Listing_Standard();
+
+        GUI.BeginGroup(region);
+        listing.Begin(region);
+
+        (Rect labelRect, Rect fieldRect) = listing.Split(0.6f);
+        LabelDrawer.Draw(labelRect, _commandLabel);
+
+        GUI.color = _invalidId ? new Color(1f, 0.53f, 0.76f) : Color.white;
+
+        if (FieldDrawer.DrawTextField(fieldRect, $"{TkSettings.Prefix}{_command.command}", out string newContent))
+        {
+            if (newContent.ToToolkit().Length - TkSettings.Prefix.Length < 0)
+            {
+                _invalidId = true;
+            }
+            else
+            {
+                _command.command = newContent.Substring(TkSettings.Prefix.Length).ToToolkit();
+                _invalidId = false;
+            }
+        }
+
+        DrawCooldownFields(listing);
+
+        GUI.color = Color.white;
+
+        if (_command.isCustomMessage)
+        {
+            DrawCustomFields(listing);
+        }
+
+        listing.End();
+        GUI.EndGroup();
+    }
+
+    private void DrawCooldownFields(Listing listing)
+    {
+        if (_commandItem.Data == null)
+        {
+            return;
+        }
+
+        (Rect globalLabel, Rect globalField) = listing.Split(0.6f);
+        var globalLine = new Rect(globalLabel.x, globalLabel.y, globalLabel.width + globalField.width, globalLabel.height);
+        bool hasGlobalCooldown = _commandItem.Data.HasGlobalCooldown;
+
+        Widgets.CheckboxLabeled(hasGlobalCooldown ? globalLabel : globalLine, _globalCooldownText, ref hasGlobalCooldown);
+
+        if (hasGlobalCooldown != _commandItem.Data.HasGlobalCooldown)
+        {
+            _commandItem.Data.HasGlobalCooldown = hasGlobalCooldown;
+        }
+
+        if (hasGlobalCooldown && ButtonDrawer.DrawFieldButton(globalLabel, Widgets.CheckboxOnTex))
+        {
+            _commandItem.Data.HasGlobalCooldown = !_commandItem.Data.HasGlobalCooldown;
+        }
+
+        if (hasGlobalCooldown && FieldDrawer.DrawNumberField(globalField, out int globalCooldown, ref _globalCooldownBuffer, ref _globalCooldownValid))
+        {
+            _commandItem.Data.GlobalCooldown = globalCooldown;
+        }
+
+
+        (Rect localLabel, Rect localField) = listing.Split(0.6f);
+        var localLine = new Rect(localLabel.x, localLabel.y, localLabel.width + localField.width, localLabel.height);
+        bool hasLocalCooldown = _commandItem.Data.HasLocalCooldown;
+
+        Widgets.CheckboxLabeled(hasLocalCooldown ? localLabel : localLine, _localCooldownText, ref hasLocalCooldown);
+
+        if (hasLocalCooldown != _commandItem.Data.HasLocalCooldown)
+        {
+            _commandItem.Data.HasLocalCooldown = hasLocalCooldown;
+        }
+
+        if (hasLocalCooldown && FieldDrawer.DrawNumberField(localField, out int localCooldown, ref _localCooldownBuffer, ref _localCooldownValid))
+        {
+            _commandItem.Data.LocalCooldown = localCooldown;
+        }
+    }
+
+    private void DrawCustomFields(Listing listing)
+    {
+        (Rect levelLabel, Rect levelField) = listing.Split(0.6f);
+        LabelDrawer.Draw(levelLabel, _userLevelText);
+
+        if (Widgets.ButtonText(levelField, GetInferredUserLevelText()))
+        {
+            Find.WindowStack.Add(new FloatMenu(_userLevelOptions));
+        }
+
+        listing.Gap(24f);
+
+        if (ButtonDrawer.DrawFieldButton(listing.GetRect(Text.SmallFontHeight), Textures.QuestionMark, _tagTooltip))
+        {
+            Application.OpenURL("https://storytoolkit.fandom.com/wiki/Commands#Tags");
+        }
+
+        Rect editorPosition = listing.GetRect(Text.SmallFontHeight * 11f);
+
+        GUI.BeginGroup(editorPosition);
+        _command.outputMessage = Widgets.TextArea(editorPosition.AtZero(), _command.outputMessage);
+        _editor ??= GUIUtility.GetStateObject(typeof(TextEditor), GUIUtility.GetControlID(FocusType.Keyboard, editorPosition)) as TextEditor;
+        GUI.EndGroup();
+    }
+
+    /// <inheritdoc cref="Window.OnAcceptKeyPressed" />
+    public override void OnAcceptKeyPressed()
+    {
+        if (GUIUtility.keyboardControl <= 0 || _editor == null)
+        {
+            base.OnAcceptKeyPressed();
+
+            return;
+        }
+
+        _command.outputMessage += "\n";
+        _editor.MoveDown();
+        Event.current.Use();
+    }
+
+    /// <inheritdoc cref="Window.OnCancelKeyPressed" />
+    public override void OnCancelKeyPressed()
+    {
+        if (GUIUtility.keyboardControl <= 0 || _editor == null)
+        {
+            base.OnCancelKeyPressed();
+
+            return;
+        }
+
+        GUIUtility.keyboardControl = 0;
+        Event.current.Use();
+    }
+
+    /// <inheritdoc cref="Window.Close" />
+    public override void Close(bool doCloseSound = true)
+    {
+        if (_showingSettings)
+        {
+            _showingSettings = false;
+
+            return;
+        }
+
+        base.Close(doCloseSound);
+    }
+
+    /// <inheritdoc cref="Window_CommandEditor.PostClose" />
+    public override void PostClose()
+    {
+        base.PostClose();
+
+        _settings?.Save();
+
+        if (TkSettings.Offload)
+        {
+            Task.Run(async () => await Data.SaveCommandsAsync()).ConfigureAwait(false);
+        }
+        else
+        {
+            Data.DumpCommands();
+        }
+    }
+
+    private void DrawButtonBar(Rect region)
+    {
+        float width = Mathf.Max(_deleteTextWidth, _confirmTextWidth, _enableTextWidth, _disableTextWidth, _deletedTextWidth, _settingsTextWidth);
+
+        var buttonRect = new Rect(region.x + region.width - width, region.y, width, Text.SmallFontHeight);
+
+        if (_command.isCustomMessage)
+        {
+            DrawCustomCommandButtons(buttonRect);
+            buttonRect = buttonRect.Shift(Direction8Way.West, 0f);
+        }
+
+        if (Widgets.ButtonText(buttonRect, _command.enabled ? _disableText : _enableText))
+        {
+            _command.enabled = !_command.enabled;
+        }
+
+        if (_settings != null)
+        {
+            buttonRect = buttonRect.Shift(Direction8Way.West, 0f);
+
+            if (Widgets.ButtonText(buttonRect, _settingsText))
+            {
+                GUIUtility.keyboardControl = 0;
+                _showingSettings = true;
+            }
+        }
+
+        var headerRect = new Rect(0f, 0f, region.width - buttonRect.width * 2 - 5f, Text.SmallFontHeight);
+        LabelDrawer.Draw(headerRect, _headerText);
+    }
+
+    private void DrawCustomCommandButtons(Rect buttonRect)
+    {
+        if (!_confirmed && Widgets.ButtonText(buttonRect, _confirming ? _confirmText : _deleteText))
+        {
+            _confirming = !_confirming;
+            _confirmed = !_confirming;
+
+            if (_confirmed)
+            {
+                ToolkitSettings.CustomCommandDefs.Remove(_command.defName);
+                RemoveMethod.Invoke(typeof(DefDatabase<Command>), new object[] { _command });
+            }
+        }
+
+        if (_confirmed)
+        {
+            LabelDrawer.Draw(buttonRect, _deletedText, new Color(1f, 0.53f, 0.76f));
+        }
+    }
+
+    private void ChangeUserLevel(UserLevel level)
+    {
+        _command.requiresAdmin = level == UserLevel.Admin;
+        _command.requiresMod = level == UserLevel.Moderator;
+    }
+
+    private string GetInferredUserLevelText()
+    {
+        if (_command.requiresAdmin)
+        {
+            return _adminText;
+        }
+
+        return _command.requiresMod ? _moderatorText : _anyoneText;
+    }
+
+    private void GetTranslations()
+    {
+        _headerText = "TKUtils.CommandEditor.Header".Translate((_command.label ?? _command.defName).CapitalizeFirst());
+        _commandLabel = "TKUtils.Fields.Command".TranslateSimple();
+        _deleteText = "TKUtils.Buttons.Delete".TranslateSimple();
+        _enableText = "TKUtils.Buttons.Enable".TranslateSimple();
+        _disableText = "TKUtils.Buttons.Disable".TranslateSimple();
+        _confirmText = "TKUtils.Buttons.AreYouSure".TranslateSimple();
+        _deletedText = "TKUtils.Headers.RestartRequired".TranslateSimple();
+        _anyoneText = "TKUtils.CommandEditor.UserLevel.Anyone".TranslateSimple();
+        _moderatorText = "TKUtils.CommandEditor.UserLevel.Moderator".TranslateSimple();
+        _adminText = "TKUtils.CommandEditor.UserLevel.Admin".TranslateSimple();
+        _userLevelText = "TKUtils.Fields.UserLevel".TranslateSimple();
+        _tagTooltip = "TKUtils.CommandEditorTooltips.Tags".TranslateSimple();
+        _settingsText = "TKUtils.Buttons.Settings".TranslateSimple();
+        _localCooldownText = "TKUtils.Fields.LocalCooldown".TranslateSimple();
+        _globalCooldownText = "TKUtils.Fields.GlobalCooldown".TranslateSimple();
+
+        GameFont cache = Text.Font;
+        Text.Font = GameFont.Small;
+        _deleteTextWidth = Text.CalcSize(_deleteText).x;
+        _confirmTextWidth = Text.CalcSize(_confirmText).x;
+        _enableTextWidth = Text.CalcSize(_enableText).x;
+        _disableTextWidth = Text.CalcSize(_disableText).x;
+        _deletedTextWidth = Text.CalcSize(_deletedText).x;
+        _settingsTextWidth = Text.CalcSize(_settingsText).x;
+        Text.Font = cache;
+    }
+
+    private enum UserLevel { Anyone, Moderator, Admin }
 }

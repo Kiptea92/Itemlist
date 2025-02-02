@@ -16,85 +16,133 @@
 
 using System;
 using System.Collections.Generic;
-using SirRandoo.ToolkitUtils.Helpers;
+using ToolkitUtils.UX;
 using TwitchToolkit;
 using TwitchToolkit.Storytellers.StorytellerPackWindows;
 using TwitchToolkit.Votes;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Windows
+namespace SirRandoo.ToolkitUtils.Windows;
+
+/// <summary>
+///     A dialog for editing the event weights Twitch Toolkit's
+///     storyteller uses for its polls.
+/// </summary>
+public class GlobalWeightDialog : Window_GlobalVoteWeights
 {
-    public class GlobalWeightDialog : Window_GlobalVoteWeights
+    private readonly Dictionary<string, string> _bufferCache = new();
+    private readonly List<IncidentEntry> _entries = [];
+    private float _height;
+
+    private string _nullDictText;
+    private int _totalWeights = 1;
+    private Vector2 _weightScrollPos = Vector2.zero;
+
+    public GlobalWeightDialog()
     {
-        private readonly List<VotingIncident> incidents;
-        private int totalWeights = 1;
-        private Vector2 weightScrollPos = Vector2.zero;
+        doCloseX = true;
+        doCloseButton = false;
+        optionalTitle = "TKUtils.Headers.GlobalWeights".TranslateSimple();
+    }
 
-        public GlobalWeightDialog()
+    /// <inheritdoc cref="Window.PostOpen" />
+    public override void PostOpen()
+    {
+        _nullDictText = "TKUtils.GlobalWeights.Null".TranslateSimple();
+
+        float width = windowRect.width - Margin * 2f - 16f;
+        float entryWidth = Mathf.FloorToInt(width * 0.7f);
+
+        foreach (VotingIncident incident in DefDatabase<VotingIncident>.AllDefs)
         {
-            incidents = DefDatabase<VotingIncident>.AllDefsListForReading;
+            var entry = new IncidentEntry { Incident = incident, Height = Text.CalcHeight($"{incident.defName} - 1000.00 %", entryWidth) };
+            _height += entry.Height;
+            _entries.Add(entry);
+        }
+    }
+
+    /// <inheritdoc cref="Window_GlobalVoteWeights.DoWindowContents" />
+    public override void DoWindowContents(Rect inRect)
+    {
+        GUI.BeginGroup(inRect);
+
+        var weightsRect = new Rect(0f, 0f, inRect.width, inRect.height);
+
+        GUI.BeginGroup(weightsRect);
+
+        if (ToolkitSettings.VoteWeights == null)
+        {
+            LabelDrawer.Draw(weightsRect.AtZero(), _nullDictText, ColorLibrary.Lavender, TextAnchor.MiddleCenter);
+            ToolkitSettings.VoteWeights = new Dictionary<string, int>();
+        }
+        else
+        {
+            DrawIncidentWeights(weightsRect.AtZero());
         }
 
-        public override void DoWindowContents(Rect region)
+        GUI.EndGroup();
+
+        GUI.EndGroup();
+    }
+
+    private void DrawIncidentWeights(Rect region)
+    {
+        var total = 0;
+        var usedHeight = 0f;
+        var viewPort = new Rect(0f, 0f, region.width - 16f, _height);
+
+        GUI.BeginGroup(region);
+        Widgets.BeginScrollView(region, ref _weightScrollPos, viewPort);
+
+        foreach (IncidentEntry entry in _entries)
         {
-            GUI.BeginGroup(region);
+            var relativeWeight = (float)Math.Round(entry.Incident.voteWeight / (double)_totalWeights * 100f, 2);
 
-            var noticeRect = new Rect(0f, 0f, region.width, Text.SmallFontHeight);
-            Rect weightsRect = new Rect(
-                0f,
-                noticeRect.height + 5f,
-                region.width,
-                region.height - noticeRect.height - 5f
-            ).ContractedBy(4f);
-            SettingsHelper.DrawLabel(noticeRect, "Change the weights given to votes. Setting to 0% disables it.");
+            var lineRect = new Rect(0f, usedHeight, viewPort.width, entry.Height);
 
-            GUI.BeginGroup(weightsRect);
-            if (ToolkitSettings.VoteWeights == null)
+            (Rect labelRect, Rect inputRect) = lineRect.Split(0.7f);
+            LabelDrawer.Draw(labelRect, $"{entry.Incident.defName} - {relativeWeight:P}");
+
+            (Rect sliderRect, Rect fieldRect) = inputRect.Split(0.6f);
+            var weight = (int)Widgets.HorizontalSlider(sliderRect, entry.Incident.voteWeight, 0f, 100f, true);
+
+            if (weight != entry.Incident.voteWeight)
             {
-                SettingsHelper.DrawColoredLabel(
-                    weightsRect.AtZero(),
-                    "Vote weight dictionary is null.",
-                    ColorLibrary.Lavender
-                );
-            }
-            else
-            {
-                DrawIncidentWeights(weightsRect.AtZero());
+                entry.Incident.voteWeight = weight;
+                _bufferCache[entry.Incident.defName] = entry.Incident.voteWeight.ToString();
             }
 
-            GUI.EndGroup();
+            string? buffer = null;
 
-            GUI.EndGroup();
+            if (!_bufferCache.TryGetValue(entry.Incident.defName, out string? value))
+            {
+                _bufferCache[entry.Incident.defName] = value = buffer = entry.Incident.voteWeight.ToString();
+            }
+
+            buffer ??= value;
+
+            Widgets.TextFieldNumeric(fieldRect, ref entry.Incident.voteWeight, ref buffer);
+
+            ToolkitSettings.VoteWeights[entry.Incident.defName] = entry.Incident.voteWeight;
+
+            if (buffer != value)
+            {
+                _bufferCache[entry.Incident.defName] = buffer;
+            }
+
+            usedHeight += entry.Height;
+            total += entry.Incident.voteWeight;
         }
 
-        private void DrawIncidentWeights(Rect region)
-        {
-            var viewPort = new Rect(0f, 0f, region.width - 16f, Text.SmallFontHeight * incidents.Count);
-            var total = 0;
+        _totalWeights = total;
+        Widgets.EndScrollView();
+        GUI.EndGroup();
+    }
 
-            Widgets.BeginScrollView(region, ref weightScrollPos, viewPort);
-            for (var index = 0; index < incidents.Count; index++)
-            {
-                VotingIncident incident = incidents[index];
-                var relativeWeight = (float)Math.Round(incident.voteWeight / (double)totalWeights * 100f, 2);
-
-                var lineRect = new Rect(0f, index * Text.SmallFontHeight, viewPort.width, Text.SmallFontHeight);
-                (Rect labelRect, Rect inputRect) = lineRect.ToForm(0.7f);
-                SettingsHelper.DrawFittedLabel(labelRect, $"{incident.defName} - {relativeWeight:P}");
-
-                (Rect sliderRect, Rect fieldRect) = inputRect.ToForm(0.6f);
-                incident.voteWeight = (int)Widgets.HorizontalSlider(sliderRect, incident.voteWeight, 0f, 100f, true);
-
-                var buffer = incident.voteWeight.ToString();
-                Widgets.TextFieldNumeric(fieldRect, ref incident.voteWeight, ref buffer);
-
-                ToolkitSettings.VoteWeights[incident.defName] = incident.voteWeight;
-                total += incident.voteWeight;
-            }
-
-            totalWeights = total;
-            Widgets.EndScrollView();
-        }
+    private struct IncidentEntry
+    {
+        public float Height { get; set; }
+        public VotingIncident Incident { get; set; }
     }
 }

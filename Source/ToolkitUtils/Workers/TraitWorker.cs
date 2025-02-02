@@ -1,107 +1,40 @@
-﻿// MIT License
-//
-// Copyright (c) 2021 SirRandoo
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+﻿// ToolkitUtils
+// Copyright (C) 2021  SirRandoo
+// 
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+// 
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+// 
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Models;
-using Verse;
+using SirRandoo.ToolkitUtils.Models.Tables;
 
-namespace SirRandoo.ToolkitUtils.Workers
+namespace SirRandoo.ToolkitUtils.Workers;
+
+/// <summary>
+///     A class for drawing a trait editor page in a portable, reusable
+///     way.
+/// </summary>
+public class TraitWorker : ItemWorkerBase<TableWorker<TableSettingsItem<TraitItem>>, TraitItem>
 {
-    public class TraitWorker : ItemWorkerBase<TableWorker<TableSettingsItem<TraitItem>>, TraitItem>
+    /// <inheritdoc cref="ItemWorkerBase{T,TU}.Prepare"/>
+    public override void Prepare()
     {
-        public override void Prepare()
-        {
-            base.Prepare();
-            Worker = new TraitTableWorker();
-            Worker.Prepare();
+        base.Prepare();
+        Worker = new TraitTableWorker();
+        Worker.Prepare();
 
-            SelectorAdders = new List<FloatMenuOption>
-            {
-                new FloatMenuOption("TKUtils.Fields.CanAdd".Localize(), () => AddSelector(new CanAddSelector())),
-                new FloatMenuOption(
-                    "TKUtils.Fields.AddPrice".Localize(),
-                    () => AddSelector(new AddPriceSelector())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.Fields.CanRemove".Localize(),
-                    () => AddSelector(new CanRemoveSelector())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.Fields.RemovePrice".Localize(),
-                    () => AddSelector(new RemovePriceSelector())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.Fields.BypassTraitLimit".Localize(),
-                    () => AddSelector(new BypassLimitSelector())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.Fields.Mod".Localize(),
-                    () => AddSelector(new ModSelector<TraitItem>())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.Fields.Name".Localize(),
-                    () => AddSelector(new NameSelector<TraitItem>())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.Fields.DefName".Localize(),
-                    () => AddSelector(new DefNameSelector<TraitItem>())
-                )
-            };
-
-            MutateAdders = new List<FloatMenuOption>
-            {
-                new FloatMenuOption("TKUtils.Fields.Name".Localize(), () => AddMutator(new TraitNameMutator())),
-                new FloatMenuOption("TKUtils.Fields.CanAdd".Localize(), () => AddMutator(new CanAddMutator())),
-                new FloatMenuOption("TKUtils.Fields.AddPrice".Localize(), () => AddMutator(new AddPriceMutator())),
-                new FloatMenuOption(
-                    "TKUtils.Fields.CanRemove".Localize(),
-                    () => AddMutator(new CanRemoveMutator())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.Fields.RemovePrice".Localize(),
-                    () => AddMutator(new RemovePriceMutator())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.Fields.BypassTraitLimit".Localize(),
-                    () => AddMutator(new BypassLimitMutator())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.EditorMutator.ResetName".Localize(),
-                    () => AddMutator(new ResetNameMutator<TraitItem>())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.EditorMutator.ResetAddPrice".Localize(),
-                    () => AddMutator(new ResetAddPriceMutator())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.EditorMutator.ResetRemovePrice".Localize(),
-                    () => AddMutator(new ResetRemovePriceMutator())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.EditorMutator.ResetData".Localize(),
-                    () => AddMutator(new ResetDataMutator<TraitItem>())
-                )
-            };
-        }
+        DiscoverMutators(DomainIndexer.EditorTarget.Any);
+        DiscoverSelectors(DomainIndexer.EditorTarget.Any);
+        DiscoverMutators(DomainIndexer.EditorTarget.Trait);
+        DiscoverSelectors(DomainIndexer.EditorTarget.Trait);
     }
 }

@@ -1,258 +1,329 @@
 ﻿// ToolkitUtils
 // Copyright (C) 2021  SirRandoo
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
+using RimWorld;
+using SirRandoo.ToolkitUtils.Models;
+using ToolkitUtils.UX;
 using TwitchToolkit;
 using TwitchToolkit.Incidents;
 using TwitchToolkit.Store;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Windows
+namespace SirRandoo.ToolkitUtils.Windows;
+
+/// <summary>
+///     An augmented version of Twitch Toolkit's.
+/// </summary>
+public class StoreIncidentEditor : TwitchToolkit.Windows.StoreIncidentEditor
 {
-    public class StoreIncidentEditor : TwitchToolkit.Windows.StoreIncidentEditor
+    private readonly EventTypes _eventType;
+    private readonly EventItem _item;
+    private readonly List<FloatMenuOption> _karmaTypeOptions;
+    private string _capBuffer;
+    private bool _capBufferValid = true;
+    private string _codeText;
+
+    private string _costBuffer;
+    private bool _costBufferValid = true;
+
+    private string _disableText;
+    private string _editItemsText;
+    private string _editPawnsText;
+    private string _editTraitsText;
+    private string _globalCooldownBuffer;
+    private string _globalCooldownText;
+    private bool _globalCooldownValid;
+
+    private float _headerButtonWidth;
+    private string _karmaText;
+    private string _localCooldownBuffer;
+    private string _localCooldownText;
+    private bool _localCooldownValid;
+    private string _priceText;
+    private string _resetText;
+    private string _settingsText;
+    private string _timesText;
+    private float _titleWidth;
+    private string _wagerBuffer;
+    private bool _wagerBufferValid = true;
+    private string _wagerText;
+
+    public StoreIncidentEditor(StoreIncident storeIncident) : base(storeIncident)
     {
-        private readonly EventTypes eventType;
-        private readonly List<FloatMenuOption> karmaTypeOptions;
-        private string codeText;
+        onlyOneOfTypeAllowed = true;
+        _eventType = storeIncident.GetModExtension<EventExtension>()?.EventType ?? EventTypes.Default;
+        _costBuffer = storeIncident.cost.ToString();
+        _capBuffer = storeIncident.eventCap.ToString();
+        _wagerBuffer = (storeIncidentVariables?.maxWager ?? 0).ToString();
+        _karmaTypeOptions = Data.KarmaTypes.Values.Select(t => new FloatMenuOption(t.ToString(), () => storeIncident.karmaType = t)).ToList();
+        _item = Data.Events.Find(e => string.Equals(e.DefName, storeIncident.defName));
 
-        private string disableText;
-        private string editItemsText;
-        private string editPawnsText;
-        private string editTraitsText;
+        TkUtils.Logger.Info($"Event data null? {(_item.Data == null).ToStringYesNo()}");
 
-        private float headerButtonWidth;
-        private string karmaText;
-        private string priceText;
-        private string resetText;
-        private string settingsText;
-        private string timesText;
-        private float titleWidth;
-        private string wagerText;
-
-        public StoreIncidentEditor([NotNull] StoreIncident storeIncident) : base(storeIncident)
+        if (_item.Data == null)
         {
-            onlyOneOfTypeAllowed = true;
-            eventType = storeIncident.GetModExtension<EventExtension>()?.EventType ?? EventTypes.Default;
-
-            karmaTypeOptions = Data.KarmaTypes.Select(
-                    t => new FloatMenuOption(t.ToString(), () => storeIncident.karmaType = t)
-                )
-               .ToList();
+            return;
         }
 
-        public override void PreOpen()
-        {
-            base.PreOpen();
+        _localCooldownValid = true;
+        _globalCooldownValid = true;
+        _localCooldownBuffer = _item.EventData.LocalCooldown.ToString();
+        _globalCooldownBuffer = _item.EventData.GlobalCooldown.ToString();
+    }
 
-            if (!checkedForBackup || !haveBackup)
+    /// <inheritdoc cref="Window.PreOpen" />
+    public override void PreOpen()
+    {
+        base.PreOpen();
+
+        if (!checkedForBackup || !haveBackup)
+        {
+            MakeSureSaveExists();
+        }
+
+        _disableText = "TKUtils.Buttons.Disable".TranslateSimple();
+        _resetText = "TKUtils.Buttons.Reset".TranslateSimple();
+        _settingsText = "TKUtils.Buttons.Settings".TranslateSimple();
+        _codeText = "TKUtils.Fields.PurchaseCode".TranslateSimple();
+        _priceText = "TKUtils.Fields.Price".TranslateSimple();
+        _wagerText = "TKUtils.Fields.Wager".TranslateSimple();
+        _karmaText = "TKUtils.Fields.KarmaType".TranslateSimple();
+        _timesText = "TKUtils.Fields.IncidentTimes".Translate(ToolkitSettings.EventCooldownInterval);
+        _editItemsText = "TKUtils.Buttons.EditItems".TranslateSimple();
+        _editTraitsText = "TKUtils.Buttons.EditTraits".TranslateSimple();
+        _editPawnsText = "TKUtils.Buttons.EditPawns".TranslateSimple();
+        _globalCooldownText = "TKUtils.Fields.GlobalCooldown".TranslateSimple();
+        _localCooldownText = "TKUtils.Fields.LocalCooldown".TranslateSimple();
+
+        _headerButtonWidth = Mathf.Max(Text.CalcSize(_disableText).x, Text.CalcSize(_resetText).x, Text.CalcSize(_settingsText).x) + 16f;
+
+        _titleWidth = Text.CalcSize(storeIncident.LabelCap).x + 16f;
+    }
+
+    /// <inheritdoc cref="Window.DoWindowContents" />
+    public override void DoWindowContents(Rect inRect)
+    {
+        var listing = new Listing_Standard { maxOneColumn = true };
+        listing.Begin(inRect);
+
+        (Rect titleRect, Rect buttonHeaderRect) = listing.Split(_titleWidth / inRect.width);
+
+        Widgets.Label(titleRect, storeIncident.LabelCap);
+        DrawButtonHeader(buttonHeaderRect.Rounded());
+        listing.GapLine(Text.LineHeight * 3);
+
+        if (storeIncident.cost > 0)
+        {
+            DrawGeneralSettings(listing);
+        }
+
+        DrawCooldownFields(listing);
+
+        listing.Gap();
+
+        switch (_eventType)
+        {
+            case EventTypes.Item:
+            case EventTypes.PawnKind:
+            case EventTypes.Trait:
+                (Rect _, Rect buttonRect) = listing.Split(0.6f);
+                DrawEditButtonFor(_eventType, buttonRect);
+
+                break;
+        }
+
+        listing.End();
+    }
+
+    private void DrawGeneralSettings(Listing listing)
+    {
+        (Rect abbrLabel, Rect abbrField) = listing.GetRect(Text.LineHeight).Split(0.6f);
+
+        LabelDrawer.Draw(abbrLabel, _codeText);
+
+        if (FieldDrawer.DrawTextField(abbrField, storeIncident.abbreviation, out string newAbbr))
+        {
+            storeIncident.abbreviation = newAbbr;
+        }
+
+        if (_eventType == EventTypes.Default || _eventType == EventTypes.Variable)
+        {
+            (Rect costLabel, Rect costField) = listing.GetRect(Text.LineHeight).Split(0.6f);
+
+            listing.Gap();
+            Widgets.Label(costLabel, _priceText);
+
+            if (FieldDrawer.DrawNumberField(costField, out int value, ref _costBuffer, ref _costBufferValid, 1))
             {
+                storeIncident.cost = value;
+            }
+        }
+
+        if (!storeIncident.defName.Equals("Sanctuary"))
+        {
+            (Rect capLabel, Rect capField) = listing.Split(0.6f);
+
+            listing.Gap();
+            Widgets.Label(capLabel, _timesText);
+
+            if (FieldDrawer.DrawNumberField(capField, out int value, ref _capBuffer, ref _capBufferValid, 1, 200))
+            {
+                storeIncident.eventCap = value;
+            }
+        }
+
+        if (storeIncidentVariables?.maxWager > 0)
+        {
+            listing.Gap();
+
+            (Rect wagerLabel, Rect wagerField) = listing.Split(0.6f);
+            Widgets.Label(wagerLabel, _wagerText);
+
+            if (FieldDrawer.DrawNumberField(wagerField, out int wager, ref _wagerBuffer, ref _wagerBufferValid, storeIncidentVariables.minPointsToFire, 20000))
+            {
+                storeIncidentVariables.maxWager = wager;
+            }
+        }
+
+        listing.Gap();
+        (Rect karmaLabel, Rect karmaField) = listing.Split(0.6f);
+        Widgets.Label(karmaLabel, _karmaText);
+
+        if (Widgets.ButtonText(karmaField, storeIncident.karmaType.ToString()))
+        {
+            Find.WindowStack.Add(new FloatMenu(_karmaTypeOptions));
+        }
+    }
+
+    private void DrawButtonHeader(Rect inRect)
+    {
+        var buttonRect = new Rect(inRect.width - _headerButtonWidth, 0, _headerButtonWidth, Text.LineHeight);
+
+        GUI.BeginGroup(inRect);
+
+        if (storeIncident.cost > 0)
+        {
+            if (Widgets.ButtonText(buttonRect, _disableText))
+            {
+                storeIncident.cost = -10;
+            }
+
+            buttonRect = buttonRect.Shift(Direction8Way.West, 0f);
+        }
+
+        if (!storeIncident.defName.Equals("Item"))
+        {
+            if (Widgets.ButtonText(buttonRect, _resetText))
+            {
+                Store_IncidentEditor.LoadBackup(storeIncident);
+
+                if (storeIncident.cost < 1)
+                {
+                    storeIncident.cost = 50;
+                }
+
                 MakeSureSaveExists();
             }
 
-            disableText = "TKUtils.Buttons.Disable".Localize();
-            resetText = "TKUtils.Buttons.Reset".Localize();
-            settingsText = "TKUtils.Buttons.Settings".Localize();
-            codeText = "TKUtils.Fields.PurchaseCode".Localize();
-            priceText = "TKUtils.Fields.Price".Localize();
-            wagerText = "TKUtils.Fields.Wager".Localize();
-            karmaText = "TKUtils.Fields.KarmaType".Localize();
-            timesText = "TKUtils.Fields.IncidentTimes".LocalizeKeyed(ToolkitSettings.EventCooldownInterval);
-            editItemsText = "TKUtils.Buttons.EditItems".Localize();
-            editTraitsText = "TKUtils.Buttons.EditTraits".Localize();
-            editPawnsText = "TKUtils.Buttons.EditPawns".Localize();
-
-            headerButtonWidth = Mathf.Max(
-                                    Text.CalcSize(disableText).x,
-                                    Text.CalcSize(resetText).x,
-                                    Text.CalcSize(settingsText).x
-                                )
-                                + 16f;
-
-            titleWidth = Text.CalcSize(storeIncident.LabelCap).x + 16f;
+            buttonRect = buttonRect.Shift(Direction8Way.West, 0f);
         }
 
-        public override void DoWindowContents(Rect inRect)
+        if (storeIncidentVariables?.customSettings == true && Widgets.ButtonText(buttonRect, _settingsText))
         {
-            var listing = new Listing_Standard { maxOneColumn = true };
-            listing.Begin(inRect);
-
-            (Rect titleRect, Rect buttonHeaderRect) =
-                listing.GetRect(Text.LineHeight).ToForm(titleWidth / inRect.width);
-
-            Widgets.Label(titleRect, storeIncident.LabelCap);
-            DrawButtonHeader(buttonHeaderRect.Rounded());
-            listing.GapLine(Text.LineHeight * 3);
-
-            if (storeIncident.cost > 0)
-            {
-                DrawGeneralSettings(listing);
-            }
-
-            listing.Gap();
-
-            switch (eventType)
-            {
-                case EventTypes.Item:
-                case EventTypes.PawnKind:
-                case EventTypes.Trait:
-                    (Rect _, Rect buttonRect) = listing.GetRect(Text.LineHeight).ToForm(0.6f);
-                    DrawEditButtonFor(eventType, buttonRect);
-                    break;
-            }
-
-            listing.End();
+            storeIncidentVariables.settings.EditSettings();
         }
 
-        private void DrawGeneralSettings([NotNull] Listing listing)
+        GUI.EndGroup();
+    }
+
+    private void DrawCooldownFields(Listing listing)
+    {
+        if (_item.Data == null)
         {
-            (Rect abbrLabel, Rect abbrField) = listing.GetRect(Text.LineHeight).ToForm(0.6f);
-
-            Widgets.Label(abbrLabel, codeText);
-            storeIncident.abbreviation = Widgets.TextField(abbrField, storeIncident.abbreviation);
-
-            if (eventType == EventTypes.Default || eventType == EventTypes.Variable)
-            {
-                (Rect costLabel, Rect costField) = listing.GetRect(Text.LineHeight).ToForm(0.6f);
-
-                listing.Gap();
-                Widgets.Label(costLabel, priceText);
-                SettingsHelper.DrawPriceField(costField, ref storeIncident.cost);
-
-                if (storeIncident.cost == 0)
-                {
-                    storeIncident.cost = 1;
-                }
-            }
-
-            if (!storeIncident.defName.Equals("Sanctuary"))
-            {
-                (Rect timesLabel, Rect timesField) = listing.GetRect(Text.LineHeight).ToForm(0.6f);
-                var timesBuffer = storeIncident.eventCap.ToString();
-
-                listing.Gap();
-                Widgets.Label(timesLabel, timesText);
-                Widgets.TextFieldNumeric(timesField, ref storeIncident.eventCap, ref timesBuffer, max: 200f);
-            }
-
-            if (storeIncidentVariables?.maxWager > 0)
-            {
-                listing.Gap();
-
-                (Rect wagerLabel, Rect wagerField) = listing.GetRect(Text.LineHeight).ToForm(0.6f);
-                Widgets.Label(wagerLabel, wagerText);
-                SettingsHelper.DrawPriceField(wagerField, ref storeIncidentVariables.maxWager);
-
-                if (storeIncidentVariables.maxWager > 20000)
-                {
-                    storeIncidentVariables.maxWager = 20000;
-                }
-
-                if (storeIncidentVariables.maxWager < storeIncidentVariables.cost)
-                {
-                    storeIncidentVariables.maxWager = storeIncidentVariables.cost * 2;
-                }
-            }
-
-            listing.Gap();
-            (Rect karmaLabel, Rect karmaField) = listing.GetRect(Text.LineHeight).ToForm(0.6f);
-            var karmaType = storeIncident.karmaType.ToString();
-
-            Widgets.Label(karmaLabel, karmaText);
-
-            if (Widgets.ButtonText(karmaField, karmaType))
-            {
-                Find.WindowStack.Add(new FloatMenu(karmaTypeOptions));
-            }
+            return;
         }
 
-        private void DrawButtonHeader(Rect inRect)
+        (Rect globalLabel, Rect globalField) = listing.Split(0.6f);
+        var globalLine = new Rect(globalLabel.x, globalLabel.y, globalLabel.width + globalField.width, globalLabel.height);
+        bool hasGlobalCooldown = _item.EventData.HasGlobalCooldown;
+
+        Widgets.CheckboxLabeled(hasGlobalCooldown ? globalLabel : globalLine, _globalCooldownText, ref hasGlobalCooldown);
+
+        if (hasGlobalCooldown != _item.EventData.HasGlobalCooldown)
         {
-            var buttonRect = new Rect(inRect.width - headerButtonWidth, 0, headerButtonWidth, Text.LineHeight);
-
-            GUI.BeginGroup(inRect);
-
-            if (storeIncident.cost > 0)
-            {
-                if (Widgets.ButtonText(buttonRect, disableText))
-                {
-                    storeIncident.cost = -10;
-                }
-
-                buttonRect = buttonRect.ShiftLeft(0f);
-            }
-
-            if (!storeIncident.defName.Equals("Item"))
-            {
-                if (Widgets.ButtonText(buttonRect, resetText))
-                {
-                    Store_IncidentEditor.LoadBackup(storeIncident);
-
-                    if (storeIncident.cost < 1)
-                    {
-                        storeIncident.cost = 50;
-                    }
-
-                    MakeSureSaveExists();
-                }
-
-                buttonRect = buttonRect.ShiftLeft(0f);
-            }
-
-            if (storeIncidentVariables?.customSettings == true)
-            {
-                if (Widgets.ButtonText(buttonRect, settingsText))
-                {
-                    storeIncidentVariables.settings.EditSettings();
-                }
-            }
-
-            GUI.EndGroup();
+            _item.EventData.HasGlobalCooldown = hasGlobalCooldown;
         }
 
-        private void DrawEditButtonFor(EventTypes type, Rect buttonRect)
+        if (hasGlobalCooldown && ButtonDrawer.DrawFieldButton(globalLabel, Widgets.CheckboxOnTex))
         {
-            switch (type)
-            {
-                case EventTypes.PawnKind:
-                    if (Widgets.ButtonText(buttonRect, editPawnsText))
-                    {
-                        Find.WindowStack.Add(new PawnKindConfigDialog());
-                    }
+            _item.EventData.HasGlobalCooldown = !_item.EventData.HasGlobalCooldown;
+        }
 
-                    break;
-                case EventTypes.Trait:
-                    if (Widgets.ButtonText(buttonRect, editTraitsText))
-                    {
-                        Find.WindowStack.Add(new TraitConfigDialog());
-                    }
+        if (hasGlobalCooldown && FieldDrawer.DrawNumberField(globalField, out int globalCooldown, ref _globalCooldownBuffer, ref _globalCooldownValid))
+        {
+            _item.EventData.GlobalCooldown = globalCooldown;
+        }
 
-                    break;
-                case EventTypes.Item:
-                    if (Widgets.ButtonText(buttonRect, editItemsText))
-                    {
-                        Find.WindowStack.Add(new StoreDialog());
-                    }
 
-                    break;
-            }
+        (Rect localLabel, Rect localField) = listing.Split(0.6f);
+        var localLine = new Rect(localLabel.x, localLabel.y, localLabel.width + localField.width, localLabel.height);
+        bool hasLocalCooldown = _item.EventData.HasLocalCooldown;
+
+        Widgets.CheckboxLabeled(hasLocalCooldown ? localLabel : localLine, _localCooldownText, ref hasLocalCooldown);
+
+        if (hasLocalCooldown != _item.EventData.HasLocalCooldown)
+        {
+            _item.EventData.HasLocalCooldown = hasLocalCooldown;
+        }
+
+        if (hasLocalCooldown && FieldDrawer.DrawNumberField(localField, out int localCooldown, ref _localCooldownBuffer, ref _localCooldownValid))
+        {
+            _item.EventData.LocalCooldown = localCooldown;
+        }
+    }
+
+    private void DrawEditButtonFor(EventTypes type, Rect buttonRect)
+    {
+        switch (type)
+        {
+            case EventTypes.PawnKind:
+                if (Widgets.ButtonText(buttonRect, _editPawnsText))
+                {
+                    Find.WindowStack.Add(new PawnKindConfigDialog());
+                }
+
+                break;
+            case EventTypes.Trait:
+                if (Widgets.ButtonText(buttonRect, _editTraitsText))
+                {
+                    Find.WindowStack.Add(new TraitConfigDialog());
+                }
+
+                break;
+            case EventTypes.Item:
+                if (Widgets.ButtonText(buttonRect, _editItemsText))
+                {
+                    Find.WindowStack.Add(new StoreDialog());
+                }
+
+                break;
         }
     }
 }

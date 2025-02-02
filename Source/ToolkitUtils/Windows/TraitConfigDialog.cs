@@ -1,267 +1,269 @@
 ﻿// ToolkitUtils
 // Copyright (C) 2021  SirRandoo
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using SirRandoo.ToolkitUtils.Helpers;
 using SirRandoo.ToolkitUtils.Models;
+using SirRandoo.ToolkitUtils.Models.Tables;
 using SirRandoo.ToolkitUtils.Workers;
+using ToolkitUtils.UX;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Windows
+namespace SirRandoo.ToolkitUtils.Windows;
+
+/// <summary>
+///     A dialog that allows users to edit their trait store data.
+/// </summary>
+public class TraitConfigDialog : Window
 {
-    public class TraitConfigDialog : Window
+    private readonly TraitTableWorker _worker;
+    private string _addCostText;
+    private int _globalAddCost;
+    private int _globalRemoveCost;
+    private float _lastSearchTick;
+
+    private string _query = "";
+    private string _removeCostText;
+    private string _resetAllText;
+    private Vector2 _resetAllTextSize;
+    private string _searchText;
+    private bool _shouldResizeTable = true;
+    private string _titleText;
+
+    public TraitConfigDialog()
     {
-        private readonly TraitTableWorker worker;
-        private string addCostText;
-        private int globalAddCost;
-        private int globalRemoveCost;
-        private float lastSearchTick;
+        doCloseX = true;
+        _worker = new TraitTableWorker();
+    }
 
-        private string query = "";
-        private string removeCostText;
-        private string resetAllText;
-        private Vector2 resetAllTextSize;
-        private string searchText;
-        private bool shouldResizeTable = true;
-        private string titleText;
+    /// <inheritdoc cref="Window.InitialSize" />
+    public override Vector2 InitialSize => new(900f, UI.screenHeight * 0.9f);
 
-        public TraitConfigDialog()
+    /// <inheritdoc cref="Window.Margin" />
+    protected override float Margin => 22f;
+
+    private void NotifySearchRequested()
+    {
+        _lastSearchTick = 10f;
+    }
+
+    /// <inheritdoc cref="Window.PreOpen" />
+    public override void PreOpen()
+    {
+        base.PreOpen();
+        GetTranslations();
+        _worker.Prepare();
+        optionalTitle = _titleText;
+    }
+
+    private void GetTranslations()
+    {
+        _titleText = "TKUtils.TraitStore.Title".TranslateSimple();
+        _searchText = "TKUtils.Buttons.Search".TranslateSimple();
+        _addCostText = "TKUtils.Fields.AddPrice".TranslateSimple();
+        _removeCostText = "TKUtils.Fields.RemovePrice".TranslateSimple();
+        _resetAllText = "TKUtils.Buttons.ResetAll".TranslateSimple();
+
+        _resetAllTextSize = Text.CalcSize(_resetAllText);
+    }
+
+    private void DrawHeader(Rect canvas)
+    {
+        GUI.BeginGroup(canvas);
+        (Rect searchLabel, Rect searchField) = new Rect(canvas.x, canvas.y, canvas.width * 0.19f, Text.LineHeight).Split(0.3f);
+
+        Widgets.Label(searchLabel, _searchText);
+
+        if (FieldDrawer.DrawTextField(searchField, _query, out string input))
         {
-            doCloseX = true;
-            worker = new TraitTableWorker();
+            _query = input;
+            NotifySearchRequested();
         }
 
-        public override Vector2 InitialSize => new Vector2(900f, UI.screenHeight * 0.9f);
-        protected override float Margin => 22f;
-
-        private void NotifySearchRequested()
+        if (_query.Length > 0 && ButtonDrawer.ClearButton(searchField))
         {
-            lastSearchTick = 10f;
+            _query = "";
+            NotifySearchRequested();
         }
 
-        public override void PreOpen()
+
+        float resetBtnWidth = _resetAllTextSize.x + 16f;
+        var gResetRect = new Rect(canvas.x + canvas.width - resetBtnWidth, canvas.y, resetBtnWidth, Text.LineHeight);
+        var gAddPriceRect = new Rect(canvas.width - 5f - 200f - resetBtnWidth - 10f, 0f, 200f, Text.LineHeight);
+        var gRemovePriceRect = new Rect(canvas.width - 5f - 200f - resetBtnWidth - 10f, Text.LineHeight, 200f, Text.LineHeight);
+
+        DrawGlobalAddPriceField(gAddPriceRect);
+        DrawGlobalRemovePriceField(gRemovePriceRect);
+        DrawGlobalResetButton(gResetRect);
+        GUI.EndGroup();
+    }
+
+    private void DrawGlobalResetButton(Rect canvas)
+    {
+        if (Widgets.ButtonText(canvas, _resetAllText))
         {
-            base.PreOpen();
-            GetTranslations();
-            worker.Prepare();
-            optionalTitle = titleText;
+            ConfirmationDialog.Open("TKUtils.TraitStore.ConfirmReset".TranslateSimple(), PerformGlobalReset);
+        }
+    }
+
+    private void PerformGlobalReset()
+    {
+        foreach (TableSettingsItem<TraitItem> trait in _worker.Data.Where(i => !i.IsHidden))
+        {
+            trait.Data.CanAdd = true;
+            trait.Data.CostToAdd = 3500;
+            trait.Data.CanRemove = true;
+            trait.Data.CostToRemove = 5500;
+            trait.Data.Name = trait.Data.GetDefaultName();
+            trait.Data.TraitData!.CustomName = false;
+            trait.Data.TraitData.CanBypassLimit = false;
+            trait.Data.Data.KarmaType = null;
+            trait.Data.TraitData.KarmaTypeForRemoving = null;
+        }
+    }
+
+    private void DrawGlobalRemovePriceField(Rect canvas)
+    {
+        var buffer = _globalRemoveCost.ToString();
+        Widgets.Label(canvas.LeftHalf(), _removeCostText);
+        Widgets.TextFieldNumeric(canvas.RightHalf(), ref _globalRemoveCost, ref buffer);
+
+        if (!ButtonDrawer.DoneButton(canvas.RightHalf()))
+        {
+            return;
         }
 
-        private void GetTranslations()
+        foreach (TableSettingsItem<TraitItem> trait in _worker.Data.Where(i => !i.IsHidden))
         {
-            titleText = "TKUtils.TraitStore.Title".Localize();
-            searchText = "TKUtils.Buttons.Search".Localize();
-            addCostText = "TKUtils.Fields.AddPrice".Localize();
-            removeCostText = "TKUtils.Fields.RemovePrice".Localize();
-            resetAllText = "TKUtils.Buttons.ResetAll".Localize();
+            trait.Data.CostToRemove = _globalRemoveCost;
+        }
+    }
 
-            resetAllTextSize = Text.CalcSize(resetAllText);
+    private void DrawGlobalAddPriceField(Rect canvas)
+    {
+        var buffer = _globalAddCost.ToString();
+        Widgets.Label(canvas.LeftHalf(), _addCostText);
+        Widgets.TextFieldNumeric(canvas.RightHalf(), ref _globalAddCost, ref buffer);
+
+        if (!ButtonDrawer.DoneButton(canvas.RightHalf()))
+        {
+            return;
         }
 
-        private void DrawHeader(Rect canvas)
+        foreach (TableSettingsItem<TraitItem> trait in _worker.Data.Where(i => !i.IsHidden))
         {
-            GUI.BeginGroup(canvas);
-            (Rect searchLabel, Rect searchField) =
-                new Rect(canvas.x, canvas.y, canvas.width * 0.19f, Text.LineHeight).ToForm(0.3f);
+            trait.Data.CostToAdd = _globalAddCost;
+        }
+    }
 
-            Widgets.Label(searchLabel, searchText);
-
-            if (SettingsHelper.DrawTextField(searchField, query, out string input))
-            {
-                query = input;
-                NotifySearchRequested();
-            }
-
-            if (query.Length > 0 && SettingsHelper.DrawClearButton(searchField))
-            {
-                query = "";
-                NotifySearchRequested();
-            }
-
-
-            float resetBtnWidth = resetAllTextSize.x + 16f;
-            var gResetRect = new Rect(
-                canvas.x + canvas.width - resetBtnWidth,
-                canvas.y,
-                resetBtnWidth,
-                Text.LineHeight
-            );
-            var gAddPriceRect = new Rect(canvas.width - 5f - 200f - resetBtnWidth - 10f, 0f, 200f, Text.LineHeight);
-            var gRemovePriceRect = new Rect(
-                canvas.width - 5f - 200f - resetBtnWidth - 10f,
-                Text.LineHeight,
-                200f,
-                Text.LineHeight
-            );
-
-            DrawGlobalAddPriceField(gAddPriceRect);
-            DrawGlobalRemovePriceField(gRemovePriceRect);
-            DrawGlobalResetButton(gResetRect);
-            GUI.EndGroup();
+    /// <inheritdoc cref="Window.DoWindowContents" />
+    public override void DoWindowContents(Rect inRect)
+    {
+        if (Event.current.type == EventType.Layout)
+        {
+            return;
         }
 
-        private void DrawGlobalResetButton(Rect canvas)
-        {
-            if (!Widgets.ButtonText(canvas, resetAllText))
-            {
-                return;
-            }
+        GUI.BeginGroup(inRect);
 
-            foreach (TableSettingsItem<TraitItem> trait in worker.Data.Where(i => !i.IsHidden))
-            {
-                trait.Data.CanAdd = true;
-                trait.Data.CostToAdd = 3500;
-                trait.Data.CanRemove = true;
-                trait.Data.CostToRemove = 5500;
-                trait.Data.Name = trait.Data.GetDefaultName();
-                trait.Data.TraitData.CustomName = false;
-                trait.Data.TraitData.CanBypassLimit = false;
-                trait.Data.Data.KarmaType = null;
-                trait.Data.TraitData.KarmaTypeForRemoving = null;
-            }
+        var headerRect = new Rect(0f, 0f, inRect.width, Text.LineHeight * 2f);
+        var contentArea = new Rect(inRect.x, Text.LineHeight * 4f, inRect.width, inRect.height - Text.LineHeight * 4f);
+
+        DrawHeader(headerRect);
+        Widgets.DrawLineHorizontal(inRect.x, Text.LineHeight * 3f, inRect.width);
+
+        bool wrapped = Text.WordWrap;
+        Text.WordWrap = false;
+
+        GUI.BeginGroup(contentArea);
+
+        if (_shouldResizeTable)
+        {
+            _worker.NotifyResolutionChanged(contentArea.AtZero());
+            _shouldResizeTable = false;
         }
 
-        private void DrawGlobalRemovePriceField(Rect canvas)
+        _worker.Draw(contentArea.AtZero());
+        GUI.EndGroup();
+        GUI.EndGroup();
+
+        Text.WordWrap = wrapped;
+    }
+
+    /// <inheritdoc cref="Window.WindowUpdate" />
+    public override void WindowUpdate()
+    {
+        base.WindowUpdate();
+
+
+        if (_lastSearchTick <= 0)
         {
-            var buffer = globalRemoveCost.ToString();
-            Widgets.Label(canvas.LeftHalf(), removeCostText);
-            Widgets.TextFieldNumeric(canvas.RightHalf(), ref globalRemoveCost, ref buffer);
-
-            if (!SettingsHelper.DrawDoneButton(canvas.RightHalf()))
-            {
-                return;
-            }
-
-            foreach (TableSettingsItem<TraitItem> trait in worker.Data.Where(i => !i.IsHidden))
-            {
-                trait.Data.CostToRemove = globalRemoveCost;
-            }
+            _worker.NotifySearchRequested(_query);
         }
-
-        private void DrawGlobalAddPriceField(Rect canvas)
+        else
         {
-            var buffer = globalAddCost.ToString();
-            Widgets.Label(canvas.LeftHalf(), addCostText);
-            Widgets.TextFieldNumeric(canvas.RightHalf(), ref globalAddCost, ref buffer);
-
-            if (!SettingsHelper.DrawDoneButton(canvas.RightHalf()))
-            {
-                return;
-            }
-
-            foreach (TableSettingsItem<TraitItem> trait in worker.Data.Where(i => !i.IsHidden))
-            {
-                trait.Data.CostToAdd = globalAddCost;
-            }
+            _lastSearchTick -= Time.unscaledTime - _lastSearchTick;
         }
+    }
 
-        public override void DoWindowContents(Rect canvas)
+    /// <inheritdoc cref="Window.PreClose" />
+    public override void PreClose()
+    {
+        if (TkSettings.Offload)
         {
-            if (Event.current.type == EventType.Layout)
-            {
-                return;
-            }
-
-            GUI.BeginGroup(canvas);
-
-            var headerRect = new Rect(0f, 0f, canvas.width, Text.LineHeight * 2f);
-            var contentArea = new Rect(
-                canvas.x,
-                Text.LineHeight * 4f,
-                canvas.width,
-                canvas.height - Text.LineHeight * 4f
-            );
-
-            DrawHeader(headerRect);
-            Widgets.DrawLineHorizontal(canvas.x, Text.LineHeight * 3f, canvas.width);
-
-            bool wrapped = Text.WordWrap;
-            Text.WordWrap = false;
-
-            GUI.BeginGroup(contentArea);
-
-            if (shouldResizeTable)
-            {
-                worker.NotifyResolutionChanged(contentArea.AtZero());
-                shouldResizeTable = false;
-            }
-
-            worker.Draw(contentArea.AtZero());
-            GUI.EndGroup();
-            GUI.EndGroup();
-
-            Text.WordWrap = wrapped;
-        }
-
-        public override void WindowUpdate()
-        {
-            base.WindowUpdate();
-
-
-            if (lastSearchTick <= 0)
-            {
-                worker.NotifySearchRequested(query);
-            }
-            else
-            {
-                lastSearchTick -= Time.unscaledTime - lastSearchTick;
-            }
-        }
-
-        public override void PreClose()
-        {
-            if (TkSettings.Offload)
-            {
-                Task.Run(
-                        async () =>
+            Task.Run(
+                    async () =>
+                    {
+                        switch (TkSettings.DumpStyle)
                         {
-                            switch (TkSettings.DumpStyle)
-                            {
-                                case "MultiFile":
-                                    await Data.SaveTraitsAsync(Paths.TraitFilePath);
-                                    return;
-                                case "SingleFile":
-                                    await Data.SaveLegacyShopAsync(Paths.LegacyShopDumpFilePath);
-                                    return;
-                            }
-                        }
-                    )
-                   .ConfigureAwait(false);
-            }
-            else
-            {
-                switch (TkSettings.DumpStyle)
-                {
-                    case "MultiFile":
-                        Data.SaveTraits(Paths.TraitFilePath);
-                        return;
-                    case "SingleFile":
-                        Data.SaveLegacyShop(Paths.LegacyShopDumpFilePath);
-                        return;
-                }
-            }
-        }
+                            case "MultiFile":
+                                await Data.SaveTraitsAsync(Paths.TraitFilePath);
 
-        public override void Notify_ResolutionChanged()
-        {
-            base.Notify_ResolutionChanged();
-            shouldResizeTable = true;
+                                return;
+                            case "SingleFile":
+                                await Data.SaveLegacyShopAsync(Paths.LegacyShopDumpFilePath);
+
+                                return;
+                        }
+                    }
+                )
+               .ConfigureAwait(false);
         }
+        else
+        {
+            switch (TkSettings.DumpStyle)
+            {
+                case "MultiFile":
+                    Data.SaveTraits(Paths.TraitFilePath);
+
+                    return;
+                case "SingleFile":
+                    Data.SaveLegacyShop(Paths.LegacyShopDumpFilePath);
+
+                    return;
+            }
+        }
+    }
+
+    /// <inheritdoc cref="Window.Notify_ResolutionChanged" />
+    public override void Notify_ResolutionChanged()
+    {
+        base.Notify_ResolutionChanged();
+        _shouldResizeTable = true;
     }
 }

@@ -1,330 +1,293 @@
 ﻿// ToolkitUtils
 // Copyright (C) 2021  SirRandoo
-// 
+//
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-// 
+//
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
-using SirRandoo.ToolkitUtils.Utils;
+using RimWorld;
+using SirRandoo.ToolkitUtils.Utils.Constraints;
+using ToolkitUtils.UX;
 using TwitchToolkit;
 using UnityEngine;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Windows
+namespace SirRandoo.ToolkitUtils.Windows;
+
+/// <summary>
+///     A dialog that allows users to purge viewer data according to
+///     various constraints they've set.
+/// </summary>
+public class PurgeViewersDialog : Window
 {
-    public class PurgeViewersDialog : Window
+    private readonly List<FloatMenuOption> _constraintOptions;
+    private readonly List<ConstraintBase> _constraints;
+    private string _addConstraintText;
+    private Vector2 _affectedScrollPos = Vector2.zero;
+    private string _affectedText;
+    private Viewer[] _affectedViewers;
+    private int _affectedViewersCount;
+    private string _backText;
+
+    private float _bottomButtonWidth;
+    private string _clearConstraintsText;
+
+    private string _confirmText;
+    private Vector2 _constraintsScrollPos = Vector2.zero;
+    private float _exemptButtonWidth;
+    private string _exemptText;
+    private float _headerButtonWidth;
+    private float _removeButtonWidth;
+    private string _removeText;
+    private string _showAffectedText;
+    private bool _showingAffected;
+
+    public PurgeViewersDialog()
     {
-        private readonly List<FloatMenuOption> constraintOptions;
-        private readonly List<ConstraintBase> constraints;
-        private string addConstraintText;
-        private Vector2 affectedScrollPos = Vector2.zero;
-        private string affectedText;
-        private Viewer[] affectedViewers;
-        private int affectedViewersCount;
-        private string backText;
+        doCloseX = true;
+        forcePause = true;
 
-        private float bottomButtonWidth;
-        private string clearConstraintsText;
+        _constraints = new List<ConstraintBase>();
 
-        private string confirmText;
-        private Vector2 constraintsScrollPos = Vector2.zero;
-        private float exemptButtonWidth;
-        private string exemptText;
-        private float headerButtonWidth;
-        private float removeButtonWidth;
-        private string removeText;
-        private string showAffectedText;
-        private bool showingAffected;
-
-        public PurgeViewersDialog()
+        _constraintOptions = new List<FloatMenuOption>
         {
-            doCloseX = true;
-            forcePause = true;
+            new("TKUtils.PurgeMenu.Coins".TranslateSimple().CapitalizeFirst(), () => _constraints.Add(new CoinConstraint())),
+            new("TKUtils.PurgeMenu.Karma".TranslateSimple().CapitalizeFirst(), () => _constraints.Add(new KarmaConstraint())),
+            new("TKUtils.PurgeMenu.Name".TranslateSimple().CapitalizeFirst(), () => _constraints.Add(new NameConstraint()))
+        };
+    }
 
-            constraints = new List<ConstraintBase>();
-            constraintOptions = new List<FloatMenuOption>
-            {
-                new FloatMenuOption(
-                    "TKUtils.PurgeMenu.Coins".Localize().CapitalizeFirst(),
-                    () => constraints.Add(new CoinConstraint())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.PurgeMenu.Karma".Localize().CapitalizeFirst(),
-                    () => constraints.Add(new KarmaConstraint())
-                ),
-                new FloatMenuOption(
-                    "TKUtils.PurgeMenu.Name".Localize().CapitalizeFirst(),
-                    () => constraints.Add(new NameConstraint())
-                )
-            };
-        }
+    /// <inheritdoc cref="Window.InitialSize" />
+    public override Vector2 InitialSize => new(900f, 740f);
 
-        public override Vector2 InitialSize => new Vector2(900f, 740f);
+    private static float LineHeight => Text.LineHeight * 1.5f;
 
-        private static float LineHeight => Text.LineHeight * 1.5f;
+    /// <inheritdoc cref="Window.PreOpen" />
+    public override void PreOpen()
+    {
+        base.PreOpen();
 
-        public override void PreOpen()
+        _confirmText = "TKUtils.Buttons.Confirm".TranslateSimple();
+        _showAffectedText = "TKUtils.Buttons.ViewAffected".TranslateSimple();
+        _exemptText = "TKUtils.Buttons.Exempt".TranslateSimple();
+        _removeText = "TKUtils.Buttons.Remove".TranslateSimple();
+        _backText = "TKUtils.Buttons.Back".TranslateSimple();
+        _affectedText = "TKUtils.Purge.Affected".TranslateSimple();
+        _addConstraintText = "TKUtils.Buttons.AddConstraint".TranslateSimple();
+        _clearConstraintsText = "TKUtils.Buttons.ClearConstraints".TranslateSimple();
+
+
+        _headerButtonWidth = Mathf.Max(Text.CalcSize(_addConstraintText).x, Text.CalcSize(_backText).x, Text.CalcSize(_clearConstraintsText).x) + 16f;
+        _bottomButtonWidth = Mathf.Max(Text.CalcSize(_confirmText).x, Text.CalcSize(_showAffectedText).x) + 16f;
+        _exemptButtonWidth = Text.CalcSize(_exemptText).x + 16f;
+        _removeButtonWidth = Text.CalcSize(_removeText).x + 16f;
+    }
+
+    /// <inheritdoc cref="Window.DoWindowContents" />
+    public override void DoWindowContents(Rect inRect)
+    {
+        GUI.BeginGroup(inRect);
+
+        string buttonText = _showingAffected ? _confirmText : _showAffectedText;
+        Rect buttonRect = new Rect(inRect.center.x - _bottomButtonWidth / 2f, inRect.height - 30f, _bottomButtonWidth, 28f).Rounded();
+        var headerArea = new Rect(inRect.x, inRect.y, inRect.width, 28f);
+        var contentArea = new Rect(inRect.x, headerArea.height + 10f, inRect.width, inRect.height - headerArea.height - 40f);
+
+        GUI.BeginGroup(buttonRect);
+
+        if (Widgets.ButtonText(new Rect(0f, 0f, buttonRect.width, buttonRect.height), buttonText))
         {
-            base.PreOpen();
-
-            confirmText = "TKUtils.Buttons.Confirm".Localize();
-            showAffectedText = "TKUtils.Buttons.ViewAffected".Localize();
-            exemptText = "TKUtils.Buttons.Exempt".Localize();
-            removeText = "TKUtils.Buttons.Remove".Localize();
-            backText = "TKUtils.Buttons.Back".Localize();
-            affectedText = "TKUtils.Purge.Affected".Localize();
-            addConstraintText = "TKUtils.Buttons.AddConstraint".Localize();
-            clearConstraintsText = "TKUtils.Buttons.ClearConstraints".Localize();
-
-
-            headerButtonWidth = Mathf.Max(
-                                    Text.CalcSize(addConstraintText).x,
-                                    Text.CalcSize(backText).x,
-                                    Text.CalcSize(clearConstraintsText).x
-                                )
-                                + 16f;
-            bottomButtonWidth = Mathf.Max(Text.CalcSize(confirmText).x, Text.CalcSize(showAffectedText).x) + 16f;
-            exemptButtonWidth = Text.CalcSize(exemptText).x + 16f;
-            removeButtonWidth = Text.CalcSize(removeText).x + 16f;
-        }
-
-        public override void DoWindowContents(Rect inRect)
-        {
-            GUI.BeginGroup(inRect);
-
-            string buttonText = showingAffected ? confirmText : showAffectedText;
-            Rect buttonRect = new Rect(
-                inRect.center.x - bottomButtonWidth / 2f,
-                inRect.height - 30f,
-                bottomButtonWidth,
-                28f
-            ).Rounded();
-            var headerArea = new Rect(inRect.x, inRect.y, inRect.width, 28f);
-            var contentArea = new Rect(
-                inRect.x,
-                headerArea.height + 10f,
-                inRect.width,
-                inRect.height - headerArea.height - 40f
-            );
-
-            GUI.BeginGroup(buttonRect);
-            if (Widgets.ButtonText(new Rect(0f, 0f, buttonRect.width, buttonRect.height), buttonText))
+            if (_showingAffected)
             {
-                if (showingAffected)
-                {
-                    Purge();
-                }
-                else
-                {
-                    showingAffected = true;
-                    affectedViewers = GetAffectedViewers();
-                    affectedViewersCount = affectedViewers.Length;
-                }
-            }
-
-            GUI.EndGroup();
-
-            GUI.BeginGroup(headerArea);
-            DrawHeader(new Rect(0f, 0f, headerArea.width, headerArea.height));
-            GUI.EndGroup();
-
-            GUI.BeginGroup(contentArea);
-            var contentInnerRect = new Rect(0f, 0f, contentArea.width, contentArea.height);
-
-            if (showingAffected)
-            {
-                DrawAffectedViewers(contentInnerRect);
+                Purge();
             }
             else
             {
-                DrawConstraints(contentInnerRect);
+                _showingAffected = true;
+                _affectedViewers = GetAffectedViewers();
+                _affectedViewersCount = _affectedViewers?.Length ?? 0;
             }
-
-            GUI.EndGroup();
-
-            GUI.EndGroup();
         }
 
-        private void DrawConstraints(Rect inRect)
+        GUI.EndGroup();
+
+        GUI.BeginGroup(headerArea);
+        DrawHeader(new Rect(0f, 0f, headerArea.width, headerArea.height));
+        GUI.EndGroup();
+
+        GUI.BeginGroup(contentArea);
+        var contentInnerRect = new Rect(0f, 0f, contentArea.width, contentArea.height);
+
+        if (_showingAffected)
         {
-            ConstraintBase toRemove = null;
-            var listing = new Listing_Standard();
-            int totalConstraints = constraints.Count;
-            Rect viewRect = new Rect(0f, 0f, inRect.width - 16f, LineHeight * totalConstraints).Rounded();
-
-            Widgets.BeginScrollView(inRect, ref constraintsScrollPos, viewRect);
-            listing.Begin(viewRect);
-            for (var i = 0; i < constraints.Count; i++)
-            {
-                ConstraintBase constraint = constraints[i];
-                Rect lineRect = listing.GetRect(LineHeight);
-
-                if (!lineRect.IsRegionVisible(viewRect, constraintsScrollPos))
-                {
-                    continue;
-                }
-
-                if (i % 2 == 0)
-                {
-                    Widgets.DrawLightHighlight(lineRect);
-                }
-
-                var constraintRect = new Rect(
-                    lineRect.x,
-                    lineRect.y,
-                    lineRect.width - removeButtonWidth - 20f,
-                    lineRect.height
-                );
-                var removeRect = new Rect(
-                    lineRect.width - removeButtonWidth,
-                    lineRect.y,
-                    removeButtonWidth,
-                    lineRect.height
-                );
-
-                constraint.Draw(constraintRect);
-                if (Widgets.ButtonText(removeRect, removeText))
-                {
-                    toRemove = constraint;
-                }
-            }
-
-            if (toRemove != null)
-            {
-                constraints.Remove(toRemove);
-            }
-
-            listing.End();
-            Widgets.EndScrollView();
+            DrawAffectedViewers(contentInnerRect);
         }
-
-        private void DrawAffectedViewers(Rect inRect)
+        else
         {
-            if (affectedViewers == null)
-            {
-                return;
-            }
-
-            var listing = new Listing_Standard();
-            Rect viewRect = new Rect(0f, 0f, inRect.width - 16f, LineHeight * affectedViewersCount).Rounded();
-
-            Widgets.BeginScrollView(inRect, ref affectedScrollPos, viewRect);
-            listing.Begin(viewRect);
-            for (var i = 0; i < affectedViewersCount; i++)
-            {
-                Rect lineRect = listing.GetRect(LineHeight);
-
-                if (!lineRect.IsRegionVisible(viewRect, affectedScrollPos))
-                {
-                    continue;
-                }
-
-                if (i % 2 == 0)
-                {
-                    Widgets.DrawLightHighlight(lineRect);
-                }
-
-
-                Viewer viewer = affectedViewers[i];
-                var exemptRect = new Rect(
-                    lineRect.x + (lineRect.width - exemptButtonWidth),
-                    lineRect.y,
-                    exemptButtonWidth,
-                    lineRect.height
-                );
-                var labelRect = new Rect(
-                    lineRect.x,
-                    lineRect.y,
-                    lineRect.width - exemptButtonWidth - 10f,
-                    lineRect.height
-                );
-
-                SettingsHelper.DrawLabel(labelRect, viewer.username);
-                if (!Widgets.ButtonText(exemptRect, exemptText))
-                {
-                    continue;
-                }
-
-                constraints.Add(new NameConstraint { Username = viewer.username, NameStrategy = NameStrategies.Not });
-                affectedViewers = GetAffectedViewers();
-                affectedViewersCount = affectedViewers.Length;
-            }
-
-            listing.End();
-            Widgets.EndScrollView();
+            DrawConstraints(contentInnerRect);
         }
 
-        private void DrawHeader(Rect region)
+        GUI.EndGroup();
+
+        GUI.EndGroup();
+    }
+
+    private void DrawConstraints(Rect inRect)
+    {
+        ConstraintBase? toRemove = null;
+        var listing = new Listing_Standard();
+        int totalConstraints = _constraints.Count;
+        Rect viewRect = new Rect(0f, 0f, inRect.width - 16f, LineHeight * totalConstraints).Rounded();
+
+        Widgets.BeginScrollView(inRect, ref _constraintsScrollPos, viewRect);
+        listing.Begin(viewRect);
+
+        for (var i = 0; i < _constraints.Count; i++)
         {
-            var buttonRect = new Rect(0f, 0f, headerButtonWidth, Text.LineHeight);
+            ConstraintBase constraint = _constraints[i];
+            Rect lineRect = listing.GetRect(LineHeight);
 
-            if (showingAffected)
+            if (!lineRect.IsVisible(viewRect, _constraintsScrollPos))
             {
-                var statusRect = new Rect(
-                    headerButtonWidth + 10f,
-                    0f,
-                    region.width - headerButtonWidth - 10f,
-                    Text.LineHeight
-                );
-
-                if (Widgets.ButtonText(buttonRect, backText))
-                {
-                    showingAffected = false;
-                }
-
-                Widgets.Label(statusRect, $"{affectedViewersCount:N0} {affectedText}");
+                continue;
             }
-            else
-            {
-                if (Widgets.ButtonText(buttonRect, addConstraintText))
-                {
-                    Find.WindowStack.Add(new FloatMenu(constraintOptions));
-                }
 
-                buttonRect = buttonRect.ShiftRight();
-                if (Widgets.ButtonText(buttonRect, clearConstraintsText))
-                {
-                    constraints.Clear();
-                }
+            if (i % 2 == 0)
+            {
+                Widgets.DrawLightHighlight(lineRect);
+            }
+
+            var constraintRect = new Rect(lineRect.x, lineRect.y, lineRect.width - _removeButtonWidth - 20f, lineRect.height);
+            var removeRect = new Rect(lineRect.width - _removeButtonWidth, lineRect.y, _removeButtonWidth, lineRect.height);
+
+            constraint.Draw(constraintRect);
+
+            if (Widgets.ButtonText(removeRect, _removeText))
+            {
+                toRemove = constraint;
             }
         }
 
-        [CanBeNull]
-        private Viewer[] GetAffectedViewers()
+        if (toRemove != null)
         {
-            return constraints.Count <= 0
-                ? null
-                : Viewers.All.Where(v => constraints.All(c => c.ShouldPurge(v))).ToArray();
+            _constraints.Remove(toRemove);
         }
 
-        private void Purge()
-        {
-            int count = affectedViewers.Count(viewer => Viewers.All.Remove(viewer));
+        listing.End();
+        Widgets.EndScrollView();
+    }
 
-            LogHelper.Warn($"Purged {count:N0} viewers out of the requested {affectedViewersCount:N0}!");
-            ResetState();
+    private void DrawAffectedViewers(Rect inRect)
+    {
+        if (_affectedViewers == null)
+        {
+            return;
         }
 
-        private void ResetState()
-        {
-            showingAffected = false;
+        var listing = new Listing_Standard();
+        Rect viewRect = new Rect(0f, 0f, inRect.width - 16f, LineHeight * _affectedViewersCount).Rounded();
 
-            constraints.Clear();
-            affectedScrollPos = Vector2.zero;
-            constraintsScrollPos = Vector2.zero;
+        Widgets.BeginScrollView(inRect, ref _affectedScrollPos, viewRect);
+        listing.Begin(viewRect);
+
+        for (var i = 0; i < _affectedViewersCount; i++)
+        {
+            Rect lineRect = listing.GetRect(LineHeight);
+
+            if (!lineRect.IsVisible(viewRect, _affectedScrollPos))
+            {
+                continue;
+            }
+
+            if (i % 2 == 0)
+            {
+                Widgets.DrawLightHighlight(lineRect);
+            }
+
+
+            Viewer viewer = _affectedViewers![i];
+            var exemptRect = new Rect(lineRect.x + (lineRect.width - _exemptButtonWidth), lineRect.y, _exemptButtonWidth, lineRect.height);
+            var labelRect = new Rect(lineRect.x, lineRect.y, lineRect.width - _exemptButtonWidth - 10f, lineRect.height);
+
+            LabelDrawer.Draw(labelRect, viewer.username);
+
+            if (!Widgets.ButtonText(exemptRect, _exemptText))
+            {
+                continue;
+            }
+
+            _constraints.Add(new NameConstraint { Username = viewer.username, NameStrategy = NameStrategies.Not });
+            _affectedViewers = GetAffectedViewers();
+            _affectedViewersCount = _affectedViewers?.Length ?? 0;
         }
+
+        listing.End();
+        Widgets.EndScrollView();
+    }
+
+    private void DrawHeader(Rect region)
+    {
+        var buttonRect = new Rect(0f, 0f, _headerButtonWidth, Text.LineHeight);
+
+        if (_showingAffected)
+        {
+            var statusRect = new Rect(_headerButtonWidth + 10f, 0f, region.width - _headerButtonWidth - 10f, Text.LineHeight);
+
+            if (Widgets.ButtonText(buttonRect, _backText))
+            {
+                _showingAffected = false;
+            }
+
+            Widgets.Label(statusRect, $"{_affectedViewersCount:N0} {_affectedText}");
+        }
+        else
+        {
+            if (Widgets.ButtonText(buttonRect, _addConstraintText))
+            {
+                Find.WindowStack.Add(new FloatMenu(_constraintOptions));
+            }
+
+            buttonRect = buttonRect.Shift(Direction8Way.East);
+
+            if (Widgets.ButtonText(buttonRect, _clearConstraintsText))
+            {
+                _constraints.Clear();
+            }
+        }
+    }
+
+    [CanBeNull]
+    private Viewer[] GetAffectedViewers()
+    {
+        return _constraints.Count <= 0 ? null : Viewers.All.Where(v => _constraints.All(c => c.ShouldPurge(v))).ToArray();
+    }
+
+    private void Purge()
+    {
+        int count = _affectedViewers.Count(viewer => Viewers.All.Remove(viewer));
+
+        TkUtils.Logger.Warn($"Purged {count:N0} viewers out of the requested {_affectedViewersCount:N0}!");
+        ResetState();
+    }
+
+    private void ResetState()
+    {
+        _showingAffected = false;
+
+        _constraints.Clear();
+        _affectedScrollPos = Vector2.zero;
+        _constraintsScrollPos = Vector2.zero;
     }
 }
