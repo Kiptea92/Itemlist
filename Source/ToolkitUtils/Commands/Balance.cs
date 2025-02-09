@@ -17,14 +17,14 @@
 using System;
 using System.Collections.Generic;
 using JetBrains.Annotations;
-using SirRandoo.ToolkitUtils.Helpers;
-using SirRandoo.ToolkitUtils.Utils;
+using Kiptea92.ToolkitUtils.Helpers;
+using Kiptea92.ToolkitUtils.Utils;
 using TwitchLib.Client.Models.Interfaces;
 using TwitchToolkit;
 using TwitchToolkit.Utilities;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Commands;
+namespace Kiptea92.ToolkitUtils.Commands;
 
 [UsedImplicitly]
 public class Balance : CommandBase
