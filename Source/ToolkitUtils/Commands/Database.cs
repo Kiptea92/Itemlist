@@ -25,7 +25,7 @@ using ToolkitCore.Utilities;
 using TwitchLib.Client.Models.Interfaces;
 using Verse;
 
-namespace SirRandoo.ToolkitUtils.Commands;
+namespace Kiptea92.ToolkitUtils.Commands;
 
 [UsedImplicitly]
 public class Database : CommandBase
